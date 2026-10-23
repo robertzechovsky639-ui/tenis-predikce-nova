@@ -22,8 +22,9 @@
   },
   {
    "source": "espn",
-   "ok": false,
-   "error": "espn: žádný požadavek neprošel"
+   "ok": true,
+   "rows": 0,
+   "note": "nebylo potřeba"
   }
  ],
  "rows": 5921,
