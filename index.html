@@ -1,0 +1,17 @@
+<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tenisová predikce</title><style>
+body{font-family:system-ui,sans-serif;max-width:900px;margin:auto;padding:16px;background:#f5f7f4;color:#1b2a1b}
+h1{color:#2e6b2e}.row{display:flex;gap:12px;flex-wrap:wrap}.row>div{flex:1;min-width:200px}
+input,select,button{font-size:16px;padding:8px;width:100%;box-sizing:border-box}
+.card{background:#fff;border-radius:10px;padding:14px;margin:12px 0;box-shadow:0 1px 4px #0002}
+.bar{display:flex;height:34px;border-radius:6px;overflow:hidden;color:#fff;font-weight:bold}
+.bar div{display:flex;align-items:center;justify-content:center}table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:4px;border-bottom:1px solid #ddd;text-align:left}.W{color:#2e7d32;font-weight:bold}.L{color:#c62828;font-weight:bold}small{color:#666}
+</style></head><body>
+<h1>🎾 Tenisová predikce</h1>
+<div class="card row"><div><label>Okruh</label><select id="tour"><option value="atp">ATP (muži)</option><option value="wta">WTA (ženy)</option></select></div>
+<div><label>Povrch</label><select id="surf"><option value="Hard">Tvrdý</option><option value="Clay">Antuka</option><option value="Grass">Tráva</option></select></div></div>
+<div class="card row"><div><label>Hráč 1</label><input id="p1" list="pl" placeholder="Začněte psát jméno…"></div>
+<div><label>Hráč 2</label><input id="p2" list="pl" placeholder="Začněte psát jméno…"></div></div>
+<datalist id="pl"></datalist><div id="out"></div><div class="card" id="meta"><small>Načítám data…</small></div>
+<script src="app.js"></script></body></html>
