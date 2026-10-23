@@ -206,14 +206,16 @@ def build(tour):
         d0,a,b,s0,tn,sc=REF[j]
         if a in idx and b in idx: bt.append([d0,idx[a],idx[b],s0,tn,sc,round(float(pp if Y[j]==1 else 1-pp),4)])
     out={"tour":tour,"players":players,"matches":matches,"data_through":MAXD,"sackmann_through":last_sack,"added":added,"avg_spw":round(avg_spw,4)}
-    if not LIGHT: out.update({"tour":tour,"best":best,"coef":list(map(float,w_final)),"features":FEAT,"gbm":export_xgb(clf_ship,X[te]),"gbm_kind":"xgboost","iso":{"x":[round(float(v),5) for v in iso_ship.X_thresholds_],"y":[round(float(v),5) for v in iso_ship.y_thresholds_]},"shipped":{"train_from":20000101,"train_to":MAXD,"calib_holdout_from":int(hcut),"n_train":int((D>=20000101).sum())},
+    if not LIGHT: out.update({"tour":tour,"best":best,"coef":list(map(float,w_final)),"features":FEAT,"gbm":export_xgb(clf_ship,X[te]),"gbm_kind":"xgboost","importance":(lambda g:[[k,round(v/sum(g.values()),4)] for k,v in sorted(g.items(),key=lambda kv:-kv[1])])({FEAT[int(k[1:])] if k[1:].isdigit() else k:v for k,v in clf_ship.get_booster().get_score(importance_type="gain").items()}),"importance_kind":"gain","trained_at":dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes").replace("+00:00","Z"),"iso":{"x":[round(float(v),5) for v in iso_ship.X_thresholds_],"y":[round(float(v),5) for v in iso_ship.y_thresholds_]},"shipped":{"train_from":20000101,"train_to":MAXD,"calib_holdout_from":int(hcut),"n_train":int((D>=20000101).sum())},
         "metrics":{"test_from":"2024-01-01","model":res["gbm_iso"] if best=="gbm" else res["lr_2010"],"raw_overall_elo":res["elo_only"],"all":res,"calibration":calib(pt,Y[te]),"train":{"elo_from":int(D.min()) if False else 1968,"gbm_eval":"2000–2021, kalibrace 2022–2023","gbm_shipped":f"2000-01-01 až {MAXD}, kalibrace holdout od {hcut}","lr":"2010–2023 (dodávaná LR 2010+ vše)"}},
         "data_through":MAXD,"sackmann_through":last_sack,"added":added,"avg_spw":round(avg_spw,4),"players":players,"matches":matches,"backtest":bt,
         "sample_X":[[None if math.isnan(v) else v for v in row] for row in X[te][:50].tolist()],"sample_p":[float(v) for v in clf_ship.predict_proba(X[te][:50])[:,1]],"sample_margin":[float(v) for v in clf_ship.predict(X[te][:50],output_margin=True)]})
     if LIGHT:
-        for k_ in ("best","coef","features","gbm","gbm_kind","iso","shipped","metrics","backtest","sample_X","sample_p","sample_margin"): out[k_]=prev.get(k_)
-        out["light_update"]=dt.datetime.now().isoformat(timespec="minutes")
+        for k_ in ("best","coef","features","gbm","gbm_kind","iso","shipped","metrics","backtest","sample_X","sample_p","sample_margin","importance","importance_kind","trained_at"):
+            if k_ in prev: out[k_]=prev.get(k_)
+        out["light_update"]=dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes").replace("+00:00","Z")
     out=json.loads(json.dumps(out).replace("NaN","null").replace("-Infinity","-1e300").replace("Infinity","1e300")); mt=out.pop("matches"); out["matches_file"]=f"{tour}_m.json"; json.dump({"matches":mt},open(f"{OUTD}/{tour}_m.json","w"),separators=(",",":"),allow_nan=False); json.dump(out,open(f"{OUTD}/{tour}.json","w"),ensure_ascii=False,separators=(",",":"),allow_nan=False)
     return out
 if __name__=="__main__":
     for t in ("atp","wta"): build(t)
+    from model_info import write_model_info; write_model_info(OUTD)
