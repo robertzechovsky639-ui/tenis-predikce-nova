@@ -4,7 +4,7 @@ const pc=p=>(p*100).toFixed(0),fd=d=>{d=String(d);return d.slice(6,8)+"."+d.slic
 const LS={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 let S={view:"zapasy",bo:3,lvl:2,cat:"Vše",day:"live",tour:"atp",surf:"Hard",p1:"",p2:"",open:null,player:null,list:[],src:"",phantoms:0,errs:[],chat:[]};
 const TODAY=(()=>{const d=new Date();return d.getFullYear()*1e4+(d.getMonth()+1)*100+d.getDate()})();
-const h2hC=new Map();function h2h(t,a,b){const D=DB[t],ia=D.players.indexOf(a),ib=D.players.indexOf(b);if(ia<0||ib<0)return [0,0];const k=t+ia+"_"+ib;if(h2hC.has(k))return h2hC.get(k);
+const h2hC=new Map();function h2h(t,a,b){const D=DB[t];if(!D.matches)return [0,0];const ia=D.players.indexOf(a),ib=D.players.indexOf(b);if(ia<0||ib<0)return [0,0];const k=t+ia+"_"+ib;if(h2hC.has(k))return h2hC.get(k);
  let x=0,y=0;for(const m of D.matches){if(m[1]===ia&&m[2]===ib)x++;else if(m[1]===ib&&m[2]===ia)y++}h2hC.set(k,[x,y]);return [x,y]}
 function P(t,a,b,s,o={}){const lvl=o.level??(/australian open|roland garros|wimbledon|us open/i.test(o.tourney||"")?4:o.cat==="Challenger"||o.cat==="ITF"||o.cat==="WTA 125"?1:2);
  return TM.predictBest(DB[t],a,b,{surface:s,date:TODAY,bo:o.bo||3,level:lvl,h2h:a&&b?h2h(t,a,b):[0,0]})}
@@ -23,18 +23,51 @@ function resolveHist(list){const h=LS.get("tpn-hist",{});let ch=false;list.forEa
 const fav=()=>LS.get("tpn-fav",[]);function togFav(n){const f=fav();const i=f.indexOf(n);i<0?f.push(n):f.splice(i,1);LS.set("tpn-fav",f);render()}
 const isFav=n=>fav().includes(n);
 // --- načtení ---
-async function loadData(){const [a,w]=await Promise.all(["atp","wta"].map(t=>fetch("data/"+t+".json").then(r=>r.json())));DB.atp=a;DB.wta=w;
- for(const t of ["atp","wta"])IX[t]=TM.nameIndex(DB[t].players)}
+async function getJ(u){const r=await fetch(u);if(!r.ok)throw new Error(u+" "+r.status);return r.json()}
+async function loadData(){const [a,w]=await Promise.all(["atp","wta"].map(t=>getJ("data/"+t+".json")));DB.atp=a;DB.wta=w;
+ for(const t of ["atp","wta"])IX[t]=TM.nameIndex(DB[t].players);
+ // zápasy (H2H, historie) se načítají líně na pozadí – první vykreslení je rychlé
+ Promise.all(["atp","wta"].map(async t=>{const f=DB[t].matches_file;if(!f||DB[t].matches)return;try{DB[t].matches=(await getJ("data/"+f)).matches}catch(e){DB[t].matches=[]}})).then(()=>{h2hC.clear();render(true)})}
 function dstr(off){const d=new Date(Date.now()+off*864e5);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 let loading=false;
 async function refresh(){if(loading)return;loading=true;try{
  if(S.day==="live"){const r=await LIVE.getLive();S.list=TM.dedupe(r.list);S.src=r.source;S.phantoms=r.phantoms;S.errs=r.errs}
- else{const r=await LIVE.getDay(dstr(S.day==="today"?0:1));S.list=TM.dedupe(r.list).sort((a,b)=>a.start-b.start);S.src=r.source;S.errs=r.errs;S.phantoms=0}
+ else{const r=await LIVE.getDay(dstr(S.day==="today"?0:1));S.list=TM.dedupe(r.list).sort((a,b)=>a.start-b.start);S.src=r.source;S.errs=r.errs;S.phantoms=r.phantoms||0}
+ S.loaded=true;S.list.forEach(m=>{if(STC.has(m.id))m.stats=STC.get(m.id);if(PBC.has(m.id))m.pbp=PBC.get(m.id)});trackLive();notifyCheck();
  resolveHist(S.list);$("#upd").innerHTML=`<span class="g"></span>${esc(S.src)} · aktualizováno ${new Date().toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}${S.phantoms?` · odfiltrováno ${S.phantoms} fantomů`:""}`;
- if(S.view==="zapasy"||S.view==="oblibene")render();loadOdds()}finally{loading=false}}
+ if(S.view==="zapasy"||S.view==="oblibene")render(true);loadOdds();const o=S.list.find(m=>m.id===S.open);if(o&&o.status==="live")loadDetail(o)}catch(e){S.errs=["chyba: "+e.message];S.loaded=true;render(true)}finally{loading=false}}
+const STC=new Map(),PBC=new Map(),PH=new Map(),PREV=new Map();
+// průběh pravděpodobnosti během sledování (každé obnovení)
+function trackLive(){const now=Date.now();S.list.forEach(m=>{if(m.status!=="live")return;const pr=prob(m);const h=PH.get(m.id)||[];if(!h.length||Math.abs(h[h.length-1].p-pr.live)>1e-4||now-h[h.length-1].t>120000)h.push({t:now,p:pr.live});PH.set(m.id,h.slice(-240))})}
+async function loadDetail(m){if(!m.sid)return;const [st,pb]=await Promise.all([LIVE.stats(m.sid),LIVE.pbp(m.sid)]);if(st){m.stats=st;STC.set(m.id,st)}if(pb){m.pbp=pb;PBC.set(m.id,pb)}m.detailLoaded=true;render(true)}
+// upozornění pro oblíbené: brejk, konec setu, konec zápasu
+const notifOn=()=>LS.get("tpn-notif",false)&&"Notification" in globalThis&&Notification.permission==="granted";
+function notifyCheck(){const f=fav();S.list.forEach(m=>{if(!(f.includes(m.home)||f.includes(m.away))||!m.ev)return;const st=TM.liveState(m.ev);const p=PREV.get(m.id);
+ PREV.set(m.id,{sa:st.sa,sb:st.sb,ga:st.ga,gb:st.gb,g:st.ga+st.gb,srvA:st.aServes,fin:m.status==="finished"});if(!p||!notifOn())return;const sc=m.sets.map(s=>s.join(":")).join(" ");let msg=null;
+ if(m.status==="finished"&&!p.fin)msg="Konec zápasu";else if(st.sa+st.sb>p.sa+p.sb)msg="Konec setu";else if(st.ga+st.gb===p.g+1&&!(p.ga===6&&p.gb===6)){const aWon=st.ga>p.ga;if(aWon!==p.srvA)msg="Brejk"}
+ if(msg)try{new Notification(`${msg}: ${m.home} – ${m.away}`,{body:sc,tag:m.id+msg,icon:"icon.svg"})}catch(e){}})}
+async function toggleNotif(){if(!("Notification" in globalThis)){alert("Prohlížeč nepodporuje upozornění.");return}if(LS.get("tpn-notif",false)){LS.set("tpn-notif",false);render();return}
+ const r=await Notification.requestPermission();LS.set("tpn-notif",r==="granted");render()}
 async function loadOdds(){const todo=S.list.filter(m=>m.sid&&m.status!=="finished"&&m.cat!=="ITF"&&m.odds===undefined).slice(0,40);
- for(let i=0;i<todo.length;i+=6){await Promise.all(todo.slice(i,i+6).map(async m=>{m.odds=await LIVE.odds(m.sid)}));if(S.view==="zapasy")render()}}
+ for(let i=0;i<todo.length;i+=6){await Promise.all(todo.slice(i,i+6).map(async m=>{m.odds=await LIVE.odds(m.sid)}));if(S.view==="zapasy")render(true)}}
 // --- komponenty ---
+const flag=cc=>cc&&cc.length===2?String.fromCodePoint(...[...cc.toUpperCase()].map(c=>127397+c.charCodeAt(0))):"";
+const photo=(id,n)=>id?`<img class="ph" loading="lazy" decoding="async" alt="" src="${LIVE.photo(id)}" onerror="this.remove()">`:`<span class="ph i" aria-hidden="true">${esc((n||"?")[0])}</span>`;
+function spark(h){if(!h||h.length<2)return "";const W=64,H=18,xs=h.map((_,i)=>i/(h.length-1)*W);return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="M${h.map((q,i)=>xs[i].toFixed(1)+","+((1-q.p)*H).toFixed(1)).join("L")}"/></svg>`}
+// graf pravděpodobnosti v čase (bod po bodu z PBP, jinak z historie obnovení)
+function chart(series,a,b){if(!series||series.length<2)return `<div class="empty sm">Průběh se zobrazí po prvních bodech.</div>`;const W=600,H=150,n=series.length-1;const X=i=>(i/n*W).toFixed(1),Y=p=>((1-p)*H).toFixed(1);
+ const line=series.map((q,i)=>X(i)+","+Y(q.p)).join("L");let sets="";let prev=series[0].set;series.forEach((q,i)=>{if(q.set!==prev){sets+=`<line x1="${X(i)}" x2="${X(i)}" y1="0" y2="${H}" class="sl"/>`;prev=q.set}});
+ const ev=series.map((q,i)=>q.ev==="break"||q.ev==="set"?`<circle cx="${X(i)}" cy="${Y(q.p)}" r="${q.ev==="set"?4:3}" class="${q.ev}"><title>${q.ev==="set"?"konec setu":"brejk"} ${q.g}</title></circle>`:"").join("");
+ const last=series[n].p;return `<figure class="chart" role="img" aria-label="Průběh pravděpodobnosti výhry: ${esc(a)} nyní ${pc(last)} %"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+ <line x1="0" x2="${W}" y1="${H/2}" y2="${H/2}" class="mid"/>${sets}<path class="area" d="M0,${H/2}L${line}L${W},${H/2}Z"/><path class="ln" d="M${line}"/>${ev}</svg>
+ <figcaption><span>▲ ${esc(a)}</span><span>svislé čáry = konec setu · <b style="color:#ffd166">●</b> brejk · <b style="color:#7cf2b0">●</b> set</span><span>${esc(b)} ▼</span></figcaption></figure>`}
+function timeline(m){const g=m.pbp;if(!g||!g.length)return "";const by={};g.forEach(x=>(by[x.set]??=[]).push(x));
+ return `<div class="tl" aria-label="Průběh gamů">${Object.entries(by).map(([s,gs])=>`<div class="tlr"><b>${s}.</b>${gs.map(x=>{const fin=x.scoring===1||x.scoring===2;const brk=fin&&x.scoring!==x.serving&&!(x.h===7||x.a===7)&&x.points.length<20;
+  return `<span class="gm ${fin?(x.scoring===1?"h":"a"):"cur"} ${brk?"brk":""}" title="${x.serving===1?esc(m.home):esc(m.away)} podává · ${x.points.map(p=>p.join(":")).join(", ")}"><i class="${x.serving===1?"sh":"sa"}"></i>${x.h}:${x.a}${brk?"<em>B</em>":""}</span>`}).join("")}</div>`).join("")}<small>● podává · <em class="bk">B</em> brejk · najeďte na game pro body</small></div>`}
+function statsTable(m){const s=m.stats;if(!s||!s.rows||!s.rows.length)return m.detailLoaded?`<div class="empty sm">Statistiky zatím nejsou k dispozici.</div>`:`<div class="skel" style="height:90px"></div>`;
+ return `<table class="stt"><tr><th>${esc(m.home.split(" ").pop())}</th><th></th><th>${esc(m.away.split(" ").pop())}</th></tr>${s.rows.map(r=>{const t=(r.hv+r.av)||1;const hb=r.k==="doubleFaults"?r.hv<r.av:r.hv>r.av,ab=r.k==="doubleFaults"?r.av<r.hv:r.av>r.hv;
+  return `<tr><td class="${hb?"lead":""}">${esc(r.h)}</td><td><small>${esc(r.l)}</small><div class="sbar"><i style="width:${r.hv/t*100}%"></i><u style="width:${r.av/t*100}%"></u></div></td><td class="${ab?"lead":""}">${esc(r.a)}</td></tr>`}).join("")}</table>`}
+function skeleton(n=5){return Array.from({length:n},()=>`<div class="m skel-card" aria-hidden="true"><div class="skel" style="width:40%"></div><div class="skel"></div><div class="skel"></div><div class="skel" style="width:70%"></div></div>`).join("")}
 function probBlock(a,b,p){return `<div class="prob"><div class="pl">${esc(a)}</div><div class="pct a">${pc(p)}<small>%</small></div><div class="pct b">${pc(1-p)}<small>%</small></div><div class="pl r">${esc(b)}</div></div><div class="split"><i style="width:${p*100}%"></i></div>`}
 const mini=(l,p)=>`<div class="mini"><span style="min-width:96px">${l}</span><b>${pc(p)} %</b><div class="t"><i style="width:${p*100}%"></i></div><b style="text-align:right">${pc(1-p)} %</b></div>`;
 function badge(c){const k={ATP:"atp",WTA:"wta","WTA 125":"wta",Challenger:"ch",ITF:"itf"}[c]||"";return `<span class="badge ${k}">${esc(c)}</span>`}
@@ -42,15 +75,20 @@ function matchRow(m){const pr=prob(m),p=pr.live;if(pr.known)logPred(m,pr.p);cons
  const sc=i=>m.sets.map((s,k)=>`<span class="${m.status==="live"&&k===m.sets.length-1?"cur":""}">${s[i]}</span>`).join("")+(m.status==="live"&&m.point&&m.point[i]!=null?`<span class="pt">${esc(m.point[i])}</span>`:"");
  const t=m.status==="live"?`<span class="badge live">● ${esc(m.desc||"živě")}</span>${m.stale?`<span class="badge">⚠ skóre se nemění 15+ min</span>`:""}`:m.status==="finished"?`<span class="badge">${m.retired?esc(m.desc):"Konec"}</span>`:`<span class="badge">${new Date(m.start*1000).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}</span>`;
  const o=m.odds;const ok=pr.known&&pr.a.m>=20&&pr.b.m>=20;const vt=o&&ok?TM.valueTip(p,o):null;const v=[vt&&vt.side===0,vt&&vt.side===1];
- return `<div class="m" data-id="${m.id}"><div class="row" style="margin-bottom:4px">${t}<small class="nm">${esc(SN[m.surface])}${pr.known?"":" · málo dat o hráčích"}</small></div>
- ${[0,1].map(i=>{const n=i?m.away:m.home;return `<div class="row"><span class="srv ${st&&st.known&&(st.serverNow===!i)?"on":""}"></span><span class="nm ${m.winner===i+1?"w":""}">${esc(n)}</span><button class="star ${isFav(n)?"on":""}" data-fav="${esc(n)}">★</button><div class="sc">${sc(i)}</div></div>`}).join("")}
+ const open=S.open===m.id;return `<div class="m${open?" open":""}" data-id="${m.id}" role="button" tabindex="0" aria-expanded="${open}" aria-label="${esc(m.home)} proti ${esc(m.away)}, ${m.status==="live"?"živě":m.status==="finished"?"skončeno":"nezačalo"}, výhra ${esc(m.home)} ${pc(p)} procent"><div class="row" style="margin-bottom:4px">${t}${m.status==="live"?spark(PH.get(m.id)):""}<small class="nm">${esc(SN[m.surface])}${pr.known?"":" · málo dat o hráčích"}</small></div>
+ ${[0,1].map(i=>{const n=i?m.away:m.home;return `<div class="row"><span class="srv ${st&&st.known&&(st.serverNow===!i)?"on":""}"></span><span class="nm ${m.winner===i+1?"w":""}">${m.cc&&m.cc[i]?`<span class="fl" aria-hidden="true">${flag(m.cc[i])}</span>`:""}${esc(n)}</span><button class="star ${isFav(n)?"on":""}" data-fav="${esc(n)}" aria-label="${isFav(n)?"Odebrat z":"Přidat do"} oblíbených: ${esc(n)}" aria-pressed="${isFav(n)}">★</button><div class="sc">${sc(i)}</div></div>`}).join("")}
  <div style="margin-top:6px">${mini(m.status==="live"?"Výhra (živě)":"Výhra",p)}</div>
  ${o?`<div class="odds">Kurzy <span class="ob ${v[0]?"val":""}">${o[0]}</span><span class="ob ${v[1]?"val":""}">${o[1]}</span>${v[0]||v[1]?`<span class="badge val">VALUE: ${esc(v[0]?m.home:m.away)}</span>`:""}</div>`:""}
- ${S.open===m.id?detail(m,pr):""}</div>`}
+ ${S.open===m.id?`<div class="detail-in" role="region" aria-label="Detail zápasu">${detail(m,pr)}</div>`:""}</div>`}
 function factors(t,a,b,s,o={}){const D=DB[t];if(D.best==="gbm"&&D.gbm){const lvl=o.level??2;const r=TM.explainGB(D,a,b,{surface:s,date:TODAY,bo:o.bo||3,level:lvl,h2h:h2h(t,a,b)});
   return `<table>${r.map(f=>`<tr><td>${f.k}</td><td class="num ${f.v>=0?"W":"L"}" style="text-align:right">${f.v>=0?"+":""}${f.v.toFixed(2)}</td></tr>`).join("")}</table><small>Příspěvky prvků v gradient boostingu (Saabas, log-odds před kalibrací, symetrizováno). Kladné zvýhodňují prvního hráče.</small>`}
  return `<table>${TM.explain(D.coef,a,b,s).map(f=>`<tr><td>${f.k}</td><td><small>${esc(f.d)}</small></td><td class="num ${f.v>=0?"W":"L"}" style="text-align:right">${f.v>=0?"+":""}${f.v.toFixed(2)}</td></tr>`).join("")}</table><small>Kladné hodnoty (log-odds) zvyhodňují prvního hráče.</small>`}
-function detail(m,pr){let h=`<div class="card hi" style="margin:10px 0 0"><h3>Predikce před zápasem</h3>${probBlock(m.home,m.away,pr.p)}<h3 style="margin-top:12px">Faktory</h3>${factors(m.tour,pr.a,pr.b,m.surface)}</div>`;
+function detail(m,pr){const head=`<div class="vs">${photo(m.hid,m.home)}<b>${esc(m.home)}</b><span>vs</span><b>${esc(m.away)}</b>${photo(m.aid,m.away)}</div>`;
+ let live="";if(m.sid&&(m.status==="live"||m.status==="finished")){const sp=pr.ip?[pr.ip.pA,pr.ip.pB]:servC.get(m.id);let ser=null;
+  if(m.pbp&&m.pbp.length&&sp)ser=TM.pbpSeries(sp[0],sp[1],m.pbp,m.bo,!!m.slam);else if(PH.get(m.id))ser=PH.get(m.id).map(q=>({p:q.p,set:0}));
+  live=`<div class="card" style="margin:10px 0 0"><h3>Průběh – pravděpodobnost výhry bod po bodu</h3>${m.detailLoaded||ser?chart(ser,m.home,m.away):`<div class="skel" style="height:150px"></div>`}${timeline(m)}</div>
+  <div class="card" style="margin:10px 0 0"><h3>Statistiky zápasu</h3>${statsTable(m)}</div>`}
+ let h=head+live+`<div class="card hi" style="margin:10px 0 0"><h3>Predikce před zápasem</h3>${probBlock(m.home,m.away,pr.p)}<h3 style="margin-top:12px">Faktory</h3>${factors(m.tour,pr.a,pr.b,m.surface)}</div>`;
  if(pr.ip){const ip=pr.ip,s=ip.s;h+=`<div class="card" style="margin:10px 0 0"><h3>In-play (stav ${s.sa}:${s.sb} sety, ${s.ga}:${s.gb} gamy)</h3>
  ${mini("Zápas",ip.match)}${mini("Aktuální set",ip.set)}
  <div class="grid" style="margin-top:10px"><div class="kpi"><small>Tiebreak v setu</small><b>${pc(ip.tiebreak)} %</b></div><div class="kpi"><small>Rozhodující set</small><b>${pc(ip.decider)} %</b></div>
@@ -61,22 +99,32 @@ function detail(m,pr){let h=`<div class="card hi" style="margin:10px 0 0"><h3>Pr
  return h}
 // --- pohledy ---
 const VIEWS={
+hledat(){const q=TM.norm(S.q||"");let body="";if(q.length>=2){const ws=q.split(" ");const hit=s=>{const n=TM.norm(s||"");return ws.every(w=>n.includes(w))};
+  const pl=["atp","wta"].flatMap(t=>DB[t].players.filter(p=>hit(p.n)).map(p=>[t,p])).sort((x,y)=>y[1].e-x[1].e).slice(0,12);
+  const ms=S.list.filter(m=>hit(m.home+" "+m.away+" "+m.tourney)).slice(0,12);const tr=[...new Set(S.list.filter(m=>hit(m.tourney)).map(m=>m.tourney))].slice(0,6);
+  const vw=[["zapasy","Zápasy"],["oblibene","Oblíbené"],["predikce","Predikce"],["hraci","Hráči"],["historie","Historie"],["chat","Chat"],["model","Model"]].filter(([k,l])=>hit(l));
+  body=`${pl.length?`<div class="card"><h3>Hráči</h3><table>${pl.map(([t,p])=>`<tr><td><a href="#" data-prof="${esc(p.n)}">${esc(p.n)}</a></td><td>${t.toUpperCase()}</td><td class="num">Elo ${Math.round(p.e)}</td></tr>`).join("")}</table></div>`:""}
+  ${ms.length?`<div class="grp"><div class="ghead">Zápasy (${S.day==="live"?"živě":"vybraný den"})</div>${ms.map(matchRow).join("")}</div>`:""}
+  ${tr.length?`<div class="card"><h3>Turnaje</h3>${tr.map(t=>`<div>${esc(t)}</div>`).join("")}</div>`:""}
+  ${vw.length?`<div class="card"><h3>Sekce</h3>${vw.map(([k,l])=>`<button class="btn" data-v="${k}">${l}</button> `).join("")}</div>`:""}
+  ${!pl.length&&!ms.length&&!tr.length&&!vw.length?`<div class="empty">Nic nenalezeno pro „${esc(S.q)}“.</div>`:""}`}else body=`<div class="empty">Hledejte hráče, turnaje, zápasy nebo sekce (min. 2 znaky).</div>`;
+ return `<h1>Hledat</h1><div class="sel" style="max-width:none"><label for="gq">Hledat</label><input id="gq" type="search" autocomplete="off" placeholder="např. Sinner, Wimbledon, Shanghai…" value="${esc(S.q||"")}"></div><div id="gres">${body}</div>`},
 zapasy(){const cats=["Vše","ATP","WTA","Challenger","ITF"];let L=S.list.filter(m=>S.cat==="Vše"||m.cat===S.cat||(S.cat==="WTA"&&m.cat==="WTA 125"));
  const groups={};L.forEach(m=>(groups[m.cat+"|"+m.tourney]??=[]).push(m));
  return `<h1>Zápasy</h1><div class="seg" id="days">${[["live","● Živě"],["today","Dnes"],["tomorrow","Zítra"]].map(([k,l])=>`<button data-day="${k}" class="${S.day===k?"on":""}">${l}</button>`).join("")}</div>
  <div class="seg">${cats.map(c=>`<button data-cat="${c}" class="${S.cat===c?"on":""}">${c}</button>`).join("")}</div>
  <div class="card" style="padding:10px 14px"><small>Aktivní zdroj: <b style="color:var(--grn)">${esc(S.src||"…")}</b>${S.errs.length?" · výpadky: "+S.errs.map(esc).join("; "):""}</small></div>
- ${Object.entries(groups).map(([k,ms])=>{const [c,t]=k.split("|");return `<div class="grp"><div class="ghead"><span>${badge(c)} ${esc(t)}</span><small>${ms.length}</small></div>${ms.map(matchRow).join("")}</div>`}).join("")||`<div class="empty">${loading?"Načítám…":"Žádné zápasy."}</div>`}`},
+ ${Object.entries(groups).map(([k,ms])=>{const [c,t]=k.split("|");return `<div class="grp"><div class="ghead"><span>${badge(c)} ${esc(t)}</span><small>${ms.length}</small></div>${ms.map(matchRow).join("")}</div>`}).join("")||(!S.loaded?skeleton():S.src==="nedostupné"?`<div class="empty err" role="alert">Živá data jsou teď nedostupná ze všech 3 zdrojů.<br><button class="btn" data-retry="1">Zkusit znovu</button></div>`:`<div class="empty">Žádné zápasy${S.cat!=="Vše"?" v kategorii "+esc(S.cat):""}.</div>`)}`},
 oblibene(){const f=fav();const ms=S.list.filter(m=>f.includes(m.home)||f.includes(m.away));
- return `<h1>Oblíbené</h1>${f.length?"":`<div class="empty">Zatím nic. Přidejte hráče hvězdičkou ★ u zápasu nebo v profilu.</div>`}
+ const nOn=notifOn();return `<h1>Oblíbené</h1><div class="card row" style="justify-content:space-between"><span><b>🔔 Upozornění</b><br><small>Brejk, konec setu a konec zápasu u oblíbených (když je aplikace otevřená).</small></span><button class="btn ${nOn?"on":""}" data-notif="1" aria-pressed="${nOn}">${nOn?"Zapnuto":"Zapnout"}</button></div>${f.length?"":`<div class="empty">Zatím nic. Přidejte hráče hvězdičkou ★ u zápasu nebo v profilu.</div>`}
  ${f.length?`<div class="card"><h3>Hráči</h3><table>${f.map(n=>{const t=getP("atp",n)?"atp":"wta";const p=getP(t,n);return `<tr><td><a href="#" data-prof="${esc(n)}" style="color:var(--txt)">${esc(n)}</a></td><td class="num">${p?Math.round(p.e):"—"}</td><td><button class="star on" data-fav="${esc(n)}">★</button></td></tr>`}).join("")}</table></div>`:""}
  ${ms.length?`<div class="grp"><div class="ghead">Zápasy oblíbených</div>${ms.map(matchRow).join("")}</div>`:f.length?`<div class="empty">Oblíbení hráči teď nehrají (${S.day==="live"?"živě":"vybraný den"}).</div>`:""}`},
 predikce(){const D=DB[S.tour];const opts=D.players.filter(p=>p.m>=5).sort((a,b)=>b.e-a.e);if(!S.p1){S.p1=opts[0].n;S.p2=opts[1].n}
  const a=getP(S.tour,S.p1),b=getP(S.tour,S.p2);let body="";
  if(a&&b&&a!==b){const p=P(S.tour,a,b,S.surf,{bo:S.bo,level:S.lvl});const ia=D.players.indexOf(a),ib=D.players.indexOf(b);
-  const h=D.matches.filter(m=>(m[1]===ia&&m[2]===ib)||(m[1]===ib&&m[2]===ia)).reverse(),hw=h.filter(m=>m[1]===ia).length;
+  const h=(D.matches||[]).filter(m=>(m[1]===ia&&m[2]===ib)||(m[1]===ib&&m[2]===ia)).reverse(),hw=h.filter(m=>m[1]===ia).length;
   body=`<div class="card hi"><h3>Pravděpodobnost výhry · ${SN[S.surf]}</h3>${probBlock(a.n,b.n,p)}</div>
-  <div class="card"><h3>Proč</h3>${factors(S.tour,a,b,S.surf,{bo:+S.bo||3,level:S.lvl})}<small>Výsledná pravděpodobnost je z modelu ${D.best==="gbm"?"gradient boosting (16 vstupů: Elo, povrch, forma, podání/příjem, H2H, žebříček, věk, odpočinek, počet setů, úroveň turnaje)":"logistické regrese"}.</small></div>
+  <div class="card"><h3>Proč</h3>${factors(S.tour,a,b,S.surf,{bo:+S.bo||3,level:S.lvl})}<small>Výsledná pravděpodobnost je z modelu ${D.best==="gbm"?"XGBoost (20 vstupů: Elo, povrch, forma i forma na povrchu, Elo momentum, únava za 14 dní, podání/příjem, H2H, žebříček, věk, odpočinek, počet setů, úroveň turnaje)":"logistické regrese"}.</small></div>
   <div class="card"><h3>Elo</h3><table><tr><th>Hráč</th><th>Celk.</th><th>Tvrdý</th><th>Antuka</th><th>Tráva</th></tr>${[a,b].map(x=>`<tr><td>${esc(x.n)}</td><td class="num">${Math.round(x.e)}</td>${TM.SURF.map(s=>`<td class="num">${Math.round(x.s[s])}</td>`).join("")}</tr>`).join("")}</table></div>
   <div class="card"><h3>Vzájemné zápasy <span class="num" style="color:var(--pink)">${hw}</span> : <span class="num" style="color:var(--vio)">${h.length-hw}</span></h3>${h.length?`<table>${h.slice(0,10).map(m=>`<tr><td>${fd(m[0])}</td><td><b>${esc(D.players[m[1]].n)}</b></td><td>${esc(m[4])}</td><td><small>${esc(m[5])} · ${SN[m[3]]}</small></td></tr>`).join("")}</table>`:"<small>Žádné vzájemné zápasy od 2015.</small>"}</div>
   <div class="card"><h3>Forma (posl. 10)</h3><table>${[a,b].map(x=>`<tr><td>${esc(x.n)}</td><td>${x.f.slice().reverse().map(r=>`<span class="${r?"W":"L"}">${r?"V":"P"}</span>`).join(" ")}</td><td class="num">${pc(TM.form(x))} %</td></tr>`).join("")}</table></div>`}
@@ -88,7 +136,7 @@ predikce(){const D=DB[S.tour];const opts=D.players.filter(p=>p.m>=5).sort((a,b)=
  <div class="filters"><div class="sel"><label>Hráč 1</label><input id="p1" list="pl" value="${esc(S.p1)}"></div><div class="sel"><label>Hráč 2</label><input id="p2" list="pl" value="${esc(S.p2)}"></div></div>
  <datalist id="pl">${opts.map(p=>`<option value="${esc(p.n)}">`).join("")}</datalist><div id="pbody">${body}</div>`},
 hraci(){const D=DB[S.tour];const top=D.players.filter(p=>p.m>=10&&p.last>=D.data_through-10000).sort((a,b)=>b.e-a.e);const p=S.player&&getP(S.tour,S.player);
- let prof="";if(p){const i=D.players.indexOf(p);const rec=D.matches.filter(m=>m[1]===i||m[2]===i).slice(-10).reverse();const sv=p.sv;
+ let prof="";if(p){const i=D.players.indexOf(p);const rec=(D.matches||[]).filter(m=>m[1]===i||m[2]===i).slice(-10).reverse();const sv=p.sv;
   prof=`<div class="card hi"><div class="row"><h2 style="margin:0;flex:1;font-style:italic;font-weight:900">${esc(p.n)}</h2><button class="star ${isFav(p.n)?"on":""}" data-fav="${esc(p.n)}">★</button></div>
   <small style="color:#d9d0ff">${esc(p.ioc||"")} · ${p.hand==="L"?"levák":p.hand==="R"?"pravák":"—"}${p.ht?` · ${p.ht} cm`:""}${p.rank?` · žebříček ${p.rank}`:""} · ${p.m} zápasů od 2015</small>
   <div class="grid" style="margin-top:10px"><div class="kpi"><small>Elo celkové</small><b>${Math.round(p.e)}</b></div>${TM.SURF.map(s=>`<div class="kpi"><small>${SN[s]} (${p.sm[s]})</small><b>${Math.round(p.s[s])}</b></div>`).join("")}</div></div>
@@ -111,7 +159,7 @@ model(){return `<h1>Model</h1>${["atp","wta"].map(t=>{const D=DB[t],m=D.metrics;
  <div class="grid"><div class="kpi"><small>Brier</small><b>${m.model.brier.toFixed(4)}</b></div><div class="kpi"><small>Log-loss</small><b>${m.model.logloss.toFixed(4)}</b></div><div class="kpi"><small>Přesnost</small><b>${(m.model.accuracy*100).toFixed(1)} %</b></div><div class="kpi"><small>Jen Elo – Brier</small><b>${m.raw_overall_elo.brier.toFixed(4)}</b></div></div>
  <h3 style="margin-top:14px">Kalibrace</h3><div class="cal">${m.calibration.map(c=>`<div title="predikce ${pc(c[0])} %, skutečnost ${pc(c[1])} %, n=${c[2]}"><i style="height:${c[0]*100}%"></i><u style="height:${c[1]*100}%"></u></div>`).join("")}</div>
  <small><span style="color:var(--vio)">■</span> průměrná predikce · <span style="color:var(--pink)">■</span> skutečný podíl výher (10 košů)</small>
- <h3 style="margin-top:14px">Porovnání modelů (test 2024+, hlavní okruh)</h3><table><tr><th>Model</th><th>Brier</th><th>Log-loss</th><th>Přesnost</th></tr>${[["Jen Elo","cmp_elo_main"],["Logistická regrese","cmp_lr_main"],["Gradient boosting + izotonická kal.","cmp_gbm_main"]].map(([l,k])=>{const x=m.all[k];return x?`<tr><td>${l}${(k==="cmp_gbm_main")===(D.best==="gbm")&&k!=="cmp_elo_main"?" ✓":""}</td><td class="num">${x.brier.toFixed(4)}</td><td class="num">${x.logloss.toFixed(4)}</td><td class="num">${(x.accuracy*100).toFixed(1)} %</td></tr>`:""}).join("")}</table>
+ <h3 style="margin-top:14px">Porovnání modelů (test 2024+, hlavní okruh)</h3><table><tr><th>Model</th><th>Brier</th><th>Log-loss</th><th>Přesnost</th></tr>${[["Jen Elo","cmp_elo_main"],["Logistická regrese","cmp_lr_main"],["HistGB (16 vstupů, předchozí)","cmp_hgb16_main"],["XGBoost (20 vstupů) + izotonická kal.","cmp_gbm_main"]].map(([l,k])=>{const x=m.all[k];return x?`<tr><td>${l}${(k==="cmp_gbm_main")===(D.best==="gbm")&&k!=="cmp_elo_main"?" ✓":""}</td><td class="num">${x.brier.toFixed(4)}</td><td class="num">${x.logloss.toFixed(4)}</td><td class="num">${(x.accuracy*100).toFixed(1)} %</td></tr>`:""}).join("")}</table>
  <small>Elo od roku 1968 · data do ${fd(D.data_through)} (Sackmann do ${fd(D.sackmann_through)}, doplněno: ${Object.entries(D.added||{}).map(([k,v])=>k+" "+v).join(", ")})</small>
  <p><small>Koeficienty LR: ${D.coef.map(x=>x.toFixed(3)).join(" / ")} (intercept, celk. Elo, povrch Elo, forma) · data do ${fd(D.data_through)} · ${D.players.length} hráčů</small></p></div>`}).join("")}
  <div class="card"><h3>Jak to funguje</h3><small>Elo od roku 1968 (K klesající s počtem zápasů) celkové + zvlášť pro každý povrch, forma = podíl výher z posledních 10 zápasů. Hlavní model je gradient boosting (HistGradientBoosting, 300 stromů) na 16 vstupech – Elo, Elo na povrchu, forma, podání/příjem (EWMA), H2H, žebříček, věk, dny odpočinku, počet setů, úroveň turnaje, povrch, zkušenost – trénink 2000–2021, izotonická kalibrace 2022–2023, test 2024+. Stromy běží přímo v prohlížeči (JSON). Pro srovnání je k dispozici logistická regrese (Elo + forma). Data se každou noc doplňují se zdroji v pořadí Sackmann → TennisMyLife → Sofascore → ESPN. Pro živé zápasy se z podání/příjmu hráčů odvodí pravděpodobnost vyhrání bodu na podání, zkalibruje se tak, aby odpovídala předzápasové predikci, a během zápasu se Bayesovsky (Beta prior, síla 80 bodů) aktualizuje živými statistikami. Z aktuálního skóre se přesně (dynamické programování) spočítá výhra v zápase, v setu, tiebreak a rozhodující set; celkový počet gamů simulací Monte Carlo. Value tip = model × kurz − 1 > 8 %.</small></div>`}};
@@ -131,19 +179,33 @@ function answer(q){const n=TM.norm(q);const surf=/antuk|clay/.test(n)?"Clay":/tr
   return `${p.n} (${pl[0].toUpperCase()}): Elo ${Math.round(p.e)} · tvrdý ${Math.round(p.s.Hard)} · antuka ${Math.round(p.s.Clay)} · tráva ${Math.round(p.s.Grass)}.`}
  return "Nerozumím. Zkus „Sinner vs Alcaraz na trávě“, „Elo Sabalenka“, „forma Djokovic“, „value tipy“ nebo „nejlepší na antuce“."}
 // --- render + události ---
-function render(){V().innerHTML=VIEWS[S.view]();document.querySelectorAll("nav.bottom button").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));
+// měkké vykreslení: při živém obnovení se mění jen karty, které se opravdu změnily (bez blikání a skoků)
+function patch(html){const el=V();const tmp=document.createElement("main");tmp.innerHTML=html;
+ if(el.children.length!==tmp.children.length){el.innerHTML=html;return}
+ [...tmp.children].forEach((n,i)=>{const o=el.children[i];if(o.outerHTML===n.outerHTML)return;
+  const om=[...o.querySelectorAll(":scope > .m,:scope .m[data-id]")],nm=[...n.querySelectorAll(":scope > .m,:scope .m[data-id]")];
+  if(om.length&&om.length===nm.length&&om.every((x,k)=>x.dataset.id===nm[k].dataset.id)&&o.className===n.className){nm.forEach((x,k)=>{if(om[k].outerHTML!==x.outerHTML)om[k].replaceWith(x)});
+   const oh=o.querySelector(".ghead"),nh=n.querySelector(".ghead");if(oh&&nh&&oh.outerHTML!==nh.outerHTML)oh.replaceWith(nh)}else o.replaceWith(n)})}
+function render(soft){const html=VIEWS[S.view]();const act=document.activeElement&&document.activeElement.id;
+ if(soft===true&&S.view!=="chat"&&S.view!=="hledat")patch(html);else V().innerHTML=html;if(act&&soft===true){const e=document.getElementById(act);if(e)e.focus()}
+ document.querySelectorAll("nav.bottom button").forEach(b=>{b.classList.toggle("on",b.dataset.v===S.view);b.setAttribute("aria-current",b.dataset.v===S.view?"page":"false")});document.querySelectorAll("nav.bottom button").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));
  if(S.view==="chat"){const go=()=>{const q=$("#q").value.trim();if(!q)return;S.chat.push(["u",q],["b",answer(q)]);render();$("#q").focus()};$("#send").onclick=go;$("#q").onkeydown=e=>{if(e.key==="Enter")go()};const l=$("#chatlog");l.scrollTop=l.scrollHeight}}
-document.addEventListener("click",async e=>{const t=e.target.closest("[data-v],[data-day],[data-cat],[data-fav],[data-prof],.m");if(!t)return;
+document.addEventListener("click",async e=>{const t=e.target.closest("[data-v],[data-day],[data-cat],[data-fav],[data-prof],[data-retry],[data-notif],[data-search],.m");if(!t)return;
+ if(t.dataset.retry){S.loaded=false;render();refresh();return}if(t.dataset.notif){toggleNotif();return}
+ if(t.dataset.search){S.view="hledat";render();const q=$("#gq");if(q)q.focus();return}
  if(t.dataset.v){S.view=t.dataset.v;render();scrollTo(0,0);if(S.view==="zapasy"||S.view==="oblibene")refresh();return}
  if(t.dataset.day){S.day=t.dataset.day;S.list=[];S.open=null;render();refresh();return}
  if(t.dataset.cat){S.cat=t.dataset.cat;render();return}
  if(t.dataset.fav!=null){e.stopPropagation();togFav(t.dataset.fav);return}
  if(t.dataset.prof!=null){e.preventDefault();const n=t.dataset.prof;S.tour=getP("atp",n)?"atp":"wta";S.player=n;S.view="hraci";render();scrollTo(0,0);return}
- if(t.classList.contains("m")){const m=S.list.find(x=>x.id===t.dataset.id);S.open=S.open===m.id?null:m.id;render();if(S.open&&m.status==="live"&&m.sid){m.stats=await LIVE.stats(m.sid);render()}}});
+ if(t.classList.contains("m")){if(e.target.closest(".detail-in"))return;const m=S.list.find(x=>x.id===t.dataset.id);if(!m)return;S.open=S.open===m.id?null:m.id;render(true);if(S.open&&m.sid&&m.status!=="upcoming")loadDetail(m)}});
+document.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&e.target.classList&&e.target.classList.contains("m")){e.preventDefault();e.target.click()}
+ if(e.key==="/"&&!/input|textarea|select/i.test(document.activeElement.tagName)){e.preventDefault();S.view="hledat";render();$("#gq").focus()}});
 document.addEventListener("input",e=>{const id=e.target.id;
+ if(id==="gq"){S.q=e.target.value;const tmp=document.createElement("div");tmp.innerHTML=VIEWS.hledat();$("#gres").innerHTML=tmp.querySelector("#gres").innerHTML;return}
  if(id==="p1"||id==="p2"){S[id]=e.target.value;if(getP(S.tour,S[id])){const y=scrollY;render();scrollTo(0,y)}}
  if(id==="surf"){S.surf=e.target.value;render()}if(id==="bo"||id==="lvl"){S[id]=+e.target.value;render()}if(id==="tour"){S.tour=e.target.value;S.p1=S.p2="";S.player=null;render()}
  if(id==="psearch"&&getP(S.tour,e.target.value)){S.player=e.target.value;render()}});
-(async()=>{await loadData();const h=location.hash.slice(1);if(VIEWS[h])S.view=h;render();refresh();setInterval(()=>{if(S.day==="live"&&(S.view==="zapasy"||S.view==="oblibene"))refresh()},30000);
+(async()=>{V().innerHTML=`<h1>Zápasy</h1>${skeleton(4)}`;try{await loadData()}catch(e){V().innerHTML=`<div class="empty err" role="alert">Nepodařilo se načíst data modelu (${esc(e.message)}).<br><button class="btn" onclick="location.reload()">Načíst znovu</button></div>`;return}const h=location.hash.slice(1);if(VIEWS[h])S.view=h;render();refresh();setInterval(()=>{if(S.day==="live"&&(S.view==="zapasy"||S.view==="oblibene"))refresh()},30000);
  if("serviceWorker" in navigator&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{})})();
 addEventListener("hashchange",()=>{const h=location.hash.slice(1);if(VIEWS[h]&&DB.atp){S.view=h;render();if(h==="zapasy"||h==="oblibene")refresh()}});

@@ -12,12 +12,12 @@ function fromSofa(e){const slug=e.tournament&&e.tournament.category&&e.tournamen
  const ret=ty==="finished"&&/retir|walkover|default|w\/o/i.test(ds);const ch=e.changes&&e.changes.changeTimestamp||0;const stale=st==="live"&&!susp&&ch>0&&(Date.now()/1000-ch)>15*60;
  const sets=[];for(let i=1;i<=5;i++){if(e.homeScore["period"+i]==null)break;sets.push([e.homeScore["period"+i],e.awayScore["period"+i]])}
  const slam=(c[0]==="ATP"||c[0]==="WTA")&&SLAM.test(e.tournament.name+" "+((e.tournament.uniqueTournament||{}).name||""))&&!/qualif|junior|boys|girls|wheelchair/i.test(e.tournament.name);const bo=slam&&c[1]==="atp"?5:3;
- return {id:"s"+e.id,sid:e.id,src:"Sofascore",cat:c[0],tour:c[1],tourney:e.tournament.name,surface:TM.surfaceOf(e.groundType),home:e.homeTeam.name,away:e.awayTeam.name,
+ return {id:"s"+e.id,sid:e.id,src:"Sofascore",cat:c[0],tour:c[1],tourney:e.tournament.name,surface:TM.surfaceOf(e.groundType),home:e.homeTeam.name,away:e.awayTeam.name,hid:e.homeTeam.id,aid:e.awayTeam.id,cc:[(e.homeTeam.country||{}).alpha2||"",(e.awayTeam.country||{}).alpha2||""],
   status:st,start:e.startTimestamp,sets,point:[e.homeScore.point,e.awayScore.point],winner:e.winnerCode||null,desc:susp?"Přerušeno":ret?(/walkover|w\/o/i.test(ds)?"Skreč před zápasem (W/O)":"Skreč"):e.status.description,suspended:susp,retired:ret,stale,bo,slam,ev:{...e,bo,slam},rank:e.changes&&e.changes.changeTimestamp||0}}
 async function sofaLive(){const d=await j(SS+"/sport/tennis/events/live");const now=Date.now()/1000;let ph=0;
  const out=[];for(const e of d.events||[]){if(TM.isPhantom(e,now)){ph++;continue}const m=fromSofa(e);if(m)out.push(m)}return {list:out,phantoms:ph}}
 async function sofaDay(date){const rs=await Promise.allSettled(SCHED_IDS.map(c=>j(`${SS}/category/${c}/scheduled-events/${date}`)));
- const out=[];rs.forEach(r=>{if(r.status==="fulfilled")(r.value.events||[]).forEach(e=>{const m=fromSofa(e);if(m)out.push(m)})});if(!out.length&&rs.every(r=>r.status==="rejected"))throw new Error("sofascore day");return out}
+ const now=Date.now()/1000;let ph=0;const out=[];rs.forEach(r=>{if(r.status==="fulfilled")(r.value.events||[]).forEach(e=>{if(e.status&&e.status.type==="inprogress"&&TM.isPhantom(e,now)){ph++;return}const m=fromSofa(e);if(m)out.push(m)})});if(!out.length&&rs.every(r=>r.status==="rejected"))throw new Error("sofascore day");return {list:out,phantoms:ph}}
 async function espnLive(date){const out=[];for(const t of ["atp","wta"]){const d=await j(`https://site.api.espn.com/apis/site/v2/sports/tennis/${t}/scoreboard`+(date?`?dates=${date.replace(/-/g,"")}`:""));
  for(const ev of d.events||[])for(const g of ev.groupings||[]){if(!/singles/i.test(g.grouping&&g.grouping.displayName||"singles"))continue;for(const c of g.competitions||[]){const s=c.status.type.state;if(!date&&s!=="in"&&s!=="pre")continue;
   const [h,a]=c.competitors.sort((x,y)=>x.order-y.order);if(!h||!a||!h.athlete)continue;const sets=(h.linescores||[]).map((l,i)=>[l.value,(a.linescores[i]||{}).value||0]);
@@ -37,7 +37,15 @@ const getDay=date=>chain([["sofascore","Sofascore",()=>sofaDay(date)],["espn","E
 const oddsCache=new Map();
 async function odds(sid){if(oddsCache.has(sid))return oddsCache.get(sid);let r=null;try{const d=await j(`${SS}/event/${sid}/odds/1/featured`,6000);const ch=d.featured&&d.featured.default&&d.featured.default.choices;
  if(ch&&ch.length>=2)r=[TM.fracToDec(ch[0].fractionalValue),TM.fracToDec(ch[1].fractionalValue)]}catch(e){}oddsCache.set(sid,r);return r}
-async function stats(sid){try{const d=await j(`${SS}/event/${sid}/statistics`,6000);const all=(d.statistics||[]).find(p=>p.period==="ALL")||(d.statistics||[])[0];if(!all)return null;
- const it={};all.groups.forEach(g=>g.statisticsItems.forEach(x=>it[x.key]=x));const f=it.firstServeAccuracy,w=it.servicePointsScored;if(!f||!w)return null;
- return {hPlayed:f.homeTotal,aPlayed:f.awayTotal,hWon:w.homeValue,aWon:w.awayValue,aces:[it.aces&&it.aces.homeValue,it.aces&&it.aces.awayValue]}}catch(e){return null}}
-root.LIVE={getLive,getDay,FAIL,sofaDay,odds,stats,fromSofa}})(globalThis);
+const STATK=[["aces","Esa"],["doubleFaults","Dvojchyby"],["firstServeAccuracy","1. podání"],["firstServePointsAccuracy","Body po 1. podání"],["secondServePointsAccuracy","Body po 2. podání"],["breakPointsScored","Brejkboly proměněné"],["serviceGamesWon","Gamy na podání"],["receiverPointsScored","Body na příjmu"],["pointsTotal","Body celkem"],["maxPointsInRow","Max. bodů v řadě"]];
+function parseStats(d){const all=(d.statistics||[]).find(p=>p.period==="ALL")||(d.statistics||[])[0];if(!all)return null;
+ const it={};all.groups.forEach(g=>g.statisticsItems.forEach(x=>{if(!it[x.key])it[x.key]=x}));const f=it.firstServeAccuracy,w=it.servicePointsScored;
+ const rows=STATK.filter(([k])=>it[k]).map(([k,l])=>({k,l,h:it[k].home,a:it[k].away,hv:+it[k].homeValue||0,av:+it[k].awayValue||0}));
+ return {hPlayed:f?f.homeTotal:0,aPlayed:f?f.awayTotal:0,hWon:w?w.homeValue:0,aWon:w?w.awayValue:0,aces:[it.aces&&it.aces.homeValue,it.aces&&it.aces.awayValue],rows,ok:!!(f&&w)}}
+async function stats(sid){try{const s=parseStats(await j(`${SS}/event/${sid}/statistics`,6000));return s}catch(e){return null}}
+// point-by-point → chronologická posloupnost gamů [{set,game,h,a,serving,scoring,points:[[h,a]]}]
+function parsePBP(d){const out=[];for(const s of (d.pointByPoint||[]).slice().sort((x,y)=>x.set-y.set))for(const g of (s.games||[]).slice().sort((x,y)=>x.game-y.game))
+ out.push({set:s.set,game:g.game,h:g.score.homeScore,a:g.score.awayScore,serving:g.score.serving,scoring:g.score.scoring,points:(g.points||[]).map(p=>[p.homePoint,p.awayPoint])});return out}
+async function pbp(sid){try{return parsePBP(await j(`${SS}/event/${sid}/point-by-point`,7000))}catch(e){return null}}
+const photo=id=>id?`${SS}/team/${id}/image`:"";
+root.LIVE={pbp,parsePBP,parseStats,photo,STATK,getLive,getDay,FAIL,sofaDay,odds,stats,fromSofa}})(globalThis);

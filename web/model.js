@@ -97,16 +97,18 @@ function ddays(a,b){const f=x=>Date.UTC(Math.floor(x/1e4),Math.floor(x/100)%100-
 const LVL={"Grand Slam":4,"Masters":3,"ATP":2,"WTA":2,"WTA 125":1,"Challenger":1,"ITF":1};
 function gbFeatures(a,b,c){a=a||DEF;b=b||DEF;const s=c.surface,d=c.date;const nz=v=>v==null?null:v;
  const age=p=>p.by!=null?d/1e4-p.by:null,rest=p=>p.last?Math.min(ddays(d,p.last),365):null,h=c.h2h||[0,0];
- const sub=(x,y)=>x==null||y==null?null:x-y;
+ const fat=p=>(p.rd||[]).filter(x=>{const k=ddays(d,x);return k>=0&&k<=14}).length;const sub=(x,y)=>x==null||y==null?null:x-y;
  return [lg(ep(a.e,b.e)),lg(ep(a.s[s],b.s[s])),form(a)-form(b),sub(nz(a.spw),nz(b.spw)),sub(nz(a.rpw),nz(b.rpw)),h[0]-h[1],h[0]+h[1],
-  a.rank>0&&b.rank>0?Math.log(b.rank)-Math.log(a.rank):null,sub(age(a),age(b)),rest(a),rest(b),c.bo||3,c.level??2,SURF.indexOf(s),Math.log1p(a.m||0),Math.log1p(b.m||0)]}
-function gbRaw(g,x){let z=g.base;for(const t of g.trees){let i=0;while(!t[i][5]){const [f,th,ml,l,r]=t[i];const v=x[f];i=(v==null||Number.isNaN(v))?(ml?l:r):(v<=th?l:r)}z+=t[i][6]}return z}
+  a.rank>0&&b.rank>0?Math.log(b.rank)-Math.log(a.rank):null,sub(age(a),age(b)),rest(a),rest(b),c.bo||3,c.level??2,SURF.indexOf(s),Math.log1p(a.m||0),Math.log1p(b.m||0),
+  sub(a.fs&&a.fs[s]!=null?a.fs[s]:null,b.fs&&b.fs[s]!=null?b.fs[s]:null),sub(nz(a.mom),nz(b.mom)),fat(a),fat(b)]}
+const goL=(g,v,th)=>g.lt?(g.f32?Math.fround(v):v)<th:v<=th;
+function gbRaw(g,x){let z=g.base;for(const t of g.trees){let i=0;while(!t[i][5]){const [f,th,ml,l,r]=t[i];const v=x[f];i=(v==null||Number.isNaN(v))?(ml?l:r):(goL(g,v,th)?l:r)}z+=t[i][6]}return z}
 function isoMap(iso,p){const X=iso.x,Y=iso.y;if(p<=X[0])return Y[0];if(p>=X[X.length-1])return Y[Y.length-1];let lo=0,hi=X.length-1;while(hi-lo>1){const m=(lo+hi)>>1;X[m]<=p?lo=m:hi=m}
  return X[hi]===X[lo]?Y[lo]:Y[lo]+(Y[hi]-Y[lo])*(p-X[lo])/(X[hi]-X[lo])}
 function predictGB(D,a,b,c){const x=gbFeatures(a,b,c);const pr=1/(1+Math.exp(-gbRaw(D.gbm,x)));return isoMap(D.iso,pr)}
 // Saabas: příspěvek prvku = součet změn hodnoty uzlu podél cesty stromem
-function gbContrib(g,x){const c=new Array(x.length).fill(0);let bias=g.base;for(const t of g.trees){let i=0;bias+=t[0][6];while(!t[i][5]){const [f,th,ml,l,r]=t[i];const v=x[f];const j=(v==null||Number.isNaN(v))?(ml?l:r):(v<=th?l:r);c[f]+=t[j][6]-t[i][6];i=j}}return {bias,c}}
-const GBN={elo_logit:["Elo celkově"],surf_elo_logit:["Elo na povrchu"],form_diff:["Forma (10 zápasů)"],spw_diff:["Body na podání"],rpw_diff:["Body na příjmu"],h2h_diff:["Vzájemné zápasy"],h2h_n:["Vzájemné zápasy"],rank_logratio:["Žebříček"],age_diff:["Věk"],rest_a:["Odpočinek"],rest_b:["Odpočinek"],log_n_a:["Zkušenost (počet zápasů)"],log_n_b:["Zkušenost (počet zápasů)"],best_of:["Kontext zápasu"],level:["Kontext zápasu"],surface:["Kontext zápasu"]};
+function gbContrib(g,x){const c=new Array(x.length).fill(0);let bias=g.base;for(const t of g.trees){let i=0;bias+=t[0][6];while(!t[i][5]){const [f,th,ml,l,r]=t[i];const v=x[f];const j=(v==null||Number.isNaN(v))?(ml?l:r):(goL(g,v,th)?l:r);c[f]+=t[j][6]-t[i][6];i=j}}return {bias,c}}
+const GBN={elo_logit:["Elo celkově"],surf_elo_logit:["Elo na povrchu"],form_diff:["Forma (10 zápasů)"],spw_diff:["Body na podání"],rpw_diff:["Body na příjmu"],h2h_diff:["Vzájemné zápasy"],h2h_n:["Vzájemné zápasy"],rank_logratio:["Žebříček"],age_diff:["Věk"],rest_a:["Odpočinek"],rest_b:["Odpočinek"],log_n_a:["Zkušenost (počet zápasů)"],log_n_b:["Zkušenost (počet zápasů)"],best_of:["Kontext zápasu"],level:["Kontext zápasu"],surface:["Kontext zápasu"],surf_form_diff:["Forma na povrchu"],elo_mom_diff:["Elo momentum (10 zápasů)"],fat14_a:["Únava (zápasy za 14 dní)"],fat14_b:["Únava (zápasy za 14 dní)"]};
 function explainGB(D,a,b,c){const h=c.h2h||[0,0];const A=gbContrib(D.gbm,gbFeatures(a,b,c)),B=gbContrib(D.gbm,gbFeatures(b,a,{...c,h2h:[h[1],h[0]]}));
  const m=new Map();D.features.forEach((f,i)=>{const k=(GBN[f]||[f])[0];m.set(k,(m.get(k)||0)+(A.c[i]-B.c[i])/2)});
  return [...m].map(([k,v])=>({k,v})).sort((x,y)=>Math.abs(y.v)-Math.abs(x.v))}
@@ -114,5 +116,20 @@ function explainGB(D,a,b,c){const h=c.h2h||[0,0];const A=gbContrib(D.gbm,gbFeatu
 function predictBest(D,a,b,c){if(D.best!=="gbm"||!D.gbm)return predict(D.coef,a,b,c.surface);const h=c.h2h||[0,0];
  const p1=predictGB(D,a,b,c),p2=predictGB(D,b,a,{...c,h2h:[h[1],h[0]]});return (p1+1-p2)/2}
 
-const api={devig,valueTip,gbContrib,explainGB,tbTarget,tbServer,nextSetFirstServer,ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
+// průběh pravděpodobnosti bod po bodu z point-by-point dat (pro graf momentu)
+function pbpSeries(pA,pB,games,bo,slam){const need=bo===5?3:2;let sa=0,sb=0,cur=games.length?games[0].set:1;const out=[];
+ const tn=v=>{const n=parseInt(v,10);return Number.isFinite(n)?n:0};
+ const P=(st)=>inPlay(pA,pB,{...st,bo,slam}).match;
+ if(!games.length)return out;let aS=games[0].serving===1;out.push({p:P({sa,sb,ga:0,gb:0,pa:0,pb:0,aServes:aS}),set:1,g:"0:0",ev:"start"});
+ let ga=0,gb=0;
+ games.forEach((g,gi)=>{if(g.set!==cur){if(ga>gb)sa++;else sb++;ga=gb=0;cur=g.set}
+  if(sa>=need||sb>=need)return;const tb=ga===6&&gb===6;aS=g.serving===1;
+  const fin=g.scoring===1||g.scoring===2;const pts=fin?g.points.slice(0,-1):g.points;
+  pts.forEach(([h,a])=>{let pa=tb?tn(h):ptNum(h),pb=tb?tn(a):ptNum(a);if(!tb){if(h==="A")pa=4,pb=3;if(a==="A")pb=4,pa=3}
+   out.push({p:P({sa,sb,ga,gb,pa,pb,aServes:aS}),set:cur,g:`${ga}:${gb}`,pt:`${h}:${a}`})});
+  if(fin){const brk=!tb&&g.scoring!==g.serving;ga=g.h;gb=g.a;let sa2=sa,sb2=sb,ga2=ga,gb2=gb;
+   const setEnd=(ga>=6&&ga-gb>=2)||(gb>=6&&gb-ga>=2)||ga===7||gb===7;if(setEnd){ga>gb?sa2++:sb2++;ga2=gb2=0}
+   const p=sa2>=need?1:sb2>=need?0:P({sa:sa2,sb:sb2,ga:ga2,gb:gb2,pa:0,pb:0,aServes:!aS});out.push({p,set:cur,g:`${ga}:${gb}`,ev:setEnd?"set":brk?"break":"game",who:g.scoring})}});
+ return out}
+const api={pbpSeries,devig,valueTip,gbContrib,explainGB,tbTarget,tbServer,nextSetFirstServer,ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
 if(typeof module!=="undefined")module.exports=api;root.TM=api})(typeof globalThis!=="undefined"?globalThis:this);

@@ -21,3 +21,8 @@ test("Sofascore parsing: přerušeno, skreč, stale, GS ženy",()=>{require("../
  const r=L.fromSofa(base("finished","Retired",{winnerCode:1}));assert.ok(r.retired&&r.desc==="Skreč"&&r.winner===1);
  const o=L.fromSofa(base("inprogress","2nd set",{changes:{changeTimestamp:Date.now()/1000-3600}}));assert.ok(o.stale);
  assert.ok(o.slam&&o.bo===3);});
+test("parseStats + parsePBP",()=>{const L=globalThis.LIVE;
+ const st=L.parseStats({statistics:[{period:"ALL",groups:[{statisticsItems:[{key:"aces",home:"5",away:"2",homeValue:5,awayValue:2},{key:"firstServeAccuracy",home:"30/50 (60%)",away:"20/40 (50%)",homeValue:30,awayValue:20,homeTotal:50,awayTotal:40},{key:"servicePointsScored",home:"35",away:"22",homeValue:35,awayValue:22}]}]}]});
+ assert.equal(st.hPlayed,50);assert.equal(st.hWon,35);assert.ok(st.rows.find(r=>r.k==="aces").hv===5);
+ const g=L.parsePBP({pointByPoint:[{set:2,games:[{game:1,score:{homeScore:1,awayScore:0,serving:1,scoring:1},points:[]}]},{set:1,games:[{game:2,score:{homeScore:6,awayScore:4,serving:2,scoring:1},points:[]},{game:1,score:{homeScore:5,awayScore:4,serving:1,scoring:1},points:[]}]}]});
+ assert.deepEqual(g.map(x=>[x.set,x.game]),[[1,1],[1,2],[2,1]])});

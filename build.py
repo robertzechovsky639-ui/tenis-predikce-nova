@@ -3,11 +3,12 @@ Výstup web/data/{atp,wta}.json. Test = 2024+ (časově oddělený)."""
 import csv, glob, json, math, os, unicodedata, datetime as dt, numpy as np
 from collections import defaultdict, deque
 from sklearn.ensemble import HistGradientBoostingClassifier
+import xgboost as xgb
 from sklearn.isotonic import IsotonicRegression
 import sys
 LIGHT = '--light' in sys.argv
 SURF = ["Hard","Clay","Grass","Carpet"]; FORM_N = 10; TEST_FROM = 20240101
-FEAT = ["elo_logit","surf_elo_logit","form_diff","spw_diff","rpw_diff","h2h_diff","h2h_n","rank_logratio","age_diff","rest_a","rest_b","best_of","level","surface","log_n_a","log_n_b"]
+FEAT = ["elo_logit","surf_elo_logit","form_diff","spw_diff","rpw_diff","h2h_diff","h2h_n","rank_logratio","age_diff","rest_a","rest_b","best_of","level","surface","log_n_a","log_n_b","surf_form_diff","elo_mom_diff","fat14_a","fat14_b"]
 LEVEL = {"G":4,"M":3,"F":3,"1000":3,"PM":3,"A":2,"500":2,"250":2,"P":2,"I":2,"T":2,"W":2,"C":1,"D":0,"O":2}
 def k(n): return 250/((n+5)**0.4)
 def ep(a,b): return 1/(1+10**((b-a)/400))
@@ -31,6 +32,40 @@ def calib(p,y):
         m=(p>=b/10)&(p<(b+1)/10)
         if m.sum(): out.append([round(float(p[m].mean()),4),round(float(y[m].mean()),4),int(m.sum())])
     return out
+XGB_P=dict(learning_rate=0.03,max_depth=4,n_estimators=400,subsample=0.8,colsample_bytree=0.8,min_child_weight=20,reg_lambda=1.0,tree_method="hist",random_state=0,verbosity=0,n_jobs=4)
+def export_xgb(clf,X0):
+    """stromy XGBoost -> stejný formát jako HGB: [f,th,missing_left,l,r,is_leaf,value]; split x<th (float32); vnitřní hodnoty = cover-vážený průměr (Saabas)"""
+    bst=clf.get_booster(); trees=[]
+    for js in bst.get_dump(dump_format="json",with_stats=True):
+        t=json.loads(js); nodes={}
+        def walk(n):
+            nodes[n["nodeid"]]=n
+            for c in n.get("children",[]): walk(c)
+        walk(t); m=max(nodes)+1; arr=[None]*m
+        def val(i):
+            n=nodes[i]
+            if "leaf" in n: return float(n["leaf"]),float(n["cover"])
+            (a,ca),(b,cb)=val(n["yes"]),val(n["no"]); v=(a*ca+b*cb)/(ca+cb); n["_v"]=v; return v,ca+cb
+        val(0)
+        for i in range(m):
+            n=nodes.get(i)
+            if n is None: arr[i]=[0,0,0,0,0,1,0.0]; continue
+            if "leaf" in n: arr[i]=[0,0,0,0,0,1,float(n["leaf"])]
+            else: arr[i]=[int(str(n["split"]).lstrip("f")),float(np.float32(n["split_condition"])),int(n["missing"]==n["yes"]),n["yes"],n["no"],0,n["_v"]]
+        trees.append(arr)
+    g={"base":0.0,"trees":trees,"lt":1,"f32":1}
+    # base = margin - součet listů (ověřeno na vzorku)
+    mg=clf.predict(X0[:1],output_margin=True)[0]
+    def raw(x):
+        z=0
+        for t in trees:
+            i=0
+            while not t[i][5]:
+                f,th,ml,l,r=t[i][:5]; v=x[f]
+                i=(l if ml else r) if (v is None or np.isnan(v)) else (l if np.float32(v)<th else r)
+            z+=t[i][6]
+        return z
+    g["base"]=float(mg-raw(X0[0])); return g
 def export_hgb(clf):
     trees=[]; lr=clf.learning_rate
     for (pr,) in clf._predictors:
@@ -89,8 +124,8 @@ def build(tour):
                 mom=lambda p:E[p]-EH[p][0] if len(EH[p])>=2 else np.nan
                 fat=lambda p:sum(1 for x in RD[p] if 0<=ddays(d,x)<=14)
                 return [fs(a)-fs(b),mom(a)-mom(b),fat(a),fat(b)]
-            if rng.random()<.5: X.append(side(w,l)); XE.append(extra(w,l)); Y.append(1)
-            else: X.append(side(l,w)); XE.append(extra(l,w)); Y.append(0)
+            if rng.random()<.5: X.append(side(w,l)+extra(w,l)); XE.append(extra(w,l)); Y.append(1)
+            else: X.append(side(l,w)+extra(l,w)); XE.append(extra(l,w)); Y.append(0)
             D.append(d); MAIN.append(r.get('tourney_level','')!='C' and r['_src']=='sackmann'); REF.append((d,w,l,s,r["tourney_name"],sc))
         if not walk:
             pw=ep(E[w],E[l]); E[w]+=k(N[w])*(1-pw); E[l]-=k(N[l])*(1-pw); N[w]+=1; N[l]+=1
@@ -117,7 +152,10 @@ def build(tour):
         w_all=fit_lr(np.nan_to_num(X[lr_tr_all][:,:3]),Y[lr_tr_all]); res["lr_1995"]=metrics(lr_pred(w_all,X[te][:,:3]),Y[te])
         res["elo_only"]=metrics(1/(1+np.exp(-X[te][:,0])),Y[te])
         gtr=(D>=20000101)&(D<20220101); gcal=(D>=20220101)&~te
-        mk=lambda:HistGradientBoostingClassifier(max_iter=300,learning_rate=0.05,max_leaf_nodes=15,min_samples_leaf=80,l2_regularization=1.0,random_state=0)
+        mkh=lambda:HistGradientBoostingClassifier(max_iter=300,learning_rate=0.05,max_leaf_nodes=15,min_samples_leaf=80,l2_regularization=1.0,random_state=0)
+        hg=mkh(); hg.fit(X[gtr][:,:16],Y[gtr]); ih=IsotonicRegression(out_of_bounds="clip",y_min=0.01,y_max=0.99).fit(hg.predict_proba(X[gcal][:,:16])[:,1],Y[gcal])
+        ph_=ih.predict(hg.predict_proba(X[te][:,:16])[:,1]); res["hgb16_iso"]=metrics(ph_,Y[te]); res["cmp_hgb16_main"]=metrics(ph_[tm],Y[te][tm])
+        mk=lambda:xgb.XGBClassifier(**XGB_P)
         clf=mk(); clf.fit(X[gtr],Y[gtr])
         raw_cal=clf.predict_proba(X[gcal])[:,1]; iso=IsotonicRegression(out_of_bounds="clip",y_min=0.01,y_max=0.99).fit(raw_cal,Y[gcal])
         p_raw=clf.predict_proba(X[te])[:,1]; p_gb=iso.predict(p_raw)
@@ -145,6 +183,7 @@ def build(tour):
         v=SV[p]
         players.append({"n":NAME[p],"e":round(E[p],1),"m":N[p],"s":{s_:round(ES[s_][p],1) for s_ in SURF[:3]},"sm":{s_:NS[s_][p] for s_ in SURF[:3]},"f":list(F[p]),"last":LAST[p],
             "rank":RANK.get(p),"by":round(BY[p],2) if p in BY else None,"spw":round(SPW[p],4) if p in SPW else None,"rpw":round(RPW[p],4) if p in RPW else None,**META.get(p,{}),
+            "fs":{s_:round(float(np.mean(FSU[(p,s_)])),4) for s_ in SURF[:3] if FSU[(p,s_)]},"mom":round(E[p]-EH[p][0],3) if len(EH[p])>=2 else None,"rd":list(RD[p]),
             "sv":{"spw":round(v[1]/v[0],4),"rpw":round(v[3]/v[2],4),"ace":round(v[4]/v[6],3) if v[6] else 0,"df":round(v[5]/v[6],3) if v[6] else 0,"pts":int(v[0])} if v[0]>=200 else None})
     matches=[[m[0],idx[m[1]],idx[m[2]],*m[3:]] for m in H if m[1] in idx and m[2] in idx]
     tot=np.array([v for v in SV.values()]).sum(0); avg_spw=float(tot[1]/tot[0])
@@ -155,14 +194,14 @@ def build(tour):
         d0,a,b,s0,tn,sc=REF[j]
         if a in idx and b in idx: bt.append([d0,idx[a],idx[b],s0,tn,sc,round(float(pp if Y[j]==1 else 1-pp),4)])
     out={"tour":tour,"players":players,"matches":matches,"data_through":MAXD,"sackmann_through":last_sack,"added":added,"avg_spw":round(avg_spw,4)}
-    if not LIGHT: out.update({"tour":tour,"best":best,"coef":list(map(float,w_final)),"features":FEAT,"gbm":export_hgb(clf_ship),"iso":{"x":[round(float(v),5) for v in iso_ship.X_thresholds_],"y":[round(float(v),5) for v in iso_ship.y_thresholds_]},"shipped":{"train_from":20000101,"train_to":MAXD,"calib_holdout_from":int(hcut),"n_train":int((D>=20000101).sum())},
+    if not LIGHT: out.update({"tour":tour,"best":best,"coef":list(map(float,w_final)),"features":FEAT,"gbm":export_xgb(clf_ship,X[te]),"gbm_kind":"xgboost","iso":{"x":[round(float(v),5) for v in iso_ship.X_thresholds_],"y":[round(float(v),5) for v in iso_ship.y_thresholds_]},"shipped":{"train_from":20000101,"train_to":MAXD,"calib_holdout_from":int(hcut),"n_train":int((D>=20000101).sum())},
         "metrics":{"test_from":"2024-01-01","model":res["gbm_iso"] if best=="gbm" else res["lr_2010"],"raw_overall_elo":res["elo_only"],"all":res,"calibration":calib(pt,Y[te]),"train":{"elo_from":int(D.min()) if False else 1968,"gbm_eval":"2000–2021, kalibrace 2022–2023","gbm_shipped":f"2000-01-01 až {MAXD}, kalibrace holdout od {hcut}","lr":"2010–2023 (dodávaná LR 2010+ vše)"}},
         "data_through":MAXD,"sackmann_through":last_sack,"added":added,"avg_spw":round(avg_spw,4),"players":players,"matches":matches,"backtest":bt,
-        "sample_X":[[None if math.isnan(v) else v for v in row] for row in X[te][:50].tolist()],"sample_p":[float(v) for v in clf_ship.predict_proba(X[te][:50])[:,1]]})
+        "sample_X":[[None if math.isnan(v) else v for v in row] for row in X[te][:50].tolist()],"sample_p":[float(v) for v in clf_ship.predict_proba(X[te][:50])[:,1]],"sample_margin":[float(v) for v in clf_ship.predict(X[te][:50],output_margin=True)]})
     if LIGHT:
-        for k_ in ("best","coef","features","gbm","iso","shipped","metrics","backtest","sample_X","sample_p"): out[k_]=prev[k_]
+        for k_ in ("best","coef","features","gbm","gbm_kind","iso","shipped","metrics","backtest","sample_X","sample_p","sample_margin"): out[k_]=prev.get(k_)
         out["light_update"]=dt.datetime.now().isoformat(timespec="minutes")
-    out=json.loads(json.dumps(out).replace("NaN","null").replace("-Infinity","-1e300").replace("Infinity","1e300")); json.dump(out,open(f"web/data/{tour}.json","w"),ensure_ascii=False,separators=(",",":"),allow_nan=False)
+    out=json.loads(json.dumps(out).replace("NaN","null").replace("-Infinity","-1e300").replace("Infinity","1e300")); mt=out.pop("matches"); out["matches_file"]=f"{tour}_m.json"; json.dump({"matches":mt},open(f"web/data/{tour}_m.json","w"),separators=(",",":"),allow_nan=False); json.dump(out,open(f"web/data/{tour}.json","w"),ensure_ascii=False,separators=(",",":"),allow_nan=False)
     return out
 if __name__=="__main__":
     for t in ("atp","wta"): build(t)

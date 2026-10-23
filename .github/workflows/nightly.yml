@@ -42,7 +42,7 @@ jobs:
         if: steps.m.outputs.run == '1'
         with: { node-version: "20" }
       - if: steps.m.outputs.run == '1'
-        run: pip install numpy "scikit-learn>=1.5"
+        run: pip install numpy "scikit-learn>=1.5" "xgboost>=3.0"
       - name: Stáhnout nové výsledky (failover Sackmann → TML → Sofascore → ESPN)
         if: steps.m.outputs.run == '1' && github.event_name != 'push'
         run: python3 fetch_recent.py

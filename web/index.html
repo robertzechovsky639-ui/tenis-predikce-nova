@@ -1,15 +1,15 @@
 <!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Tenis predikce · nová</title><meta name="theme-color" content="#120a2e"><link rel="manifest" href="manifest.json"><link rel="icon" href="icon.svg">
-<link rel="stylesheet" href="style.css"></head><body>
-<header class="top"><div class="brand"><b>TENIS</b><span class="dot"></span><span class="sub">PREDIKCE · NOVÁ</span></div><div class="upd" id="upd"><span class="g"></span>Načítám data…</div></header>
-<main id="view"></main>
-<nav class="bottom">
- <button data-v="zapasy" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5 6c4 3 4 9 0 12M19 6c-4 3-4 9 0 12"/></svg>Zápasy</button>
- <button data-v="oblibene"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.8 6.2.9-4.5 4.4 1 6.2L12 17.4 6.5 20.3l1-6.2L3 9.7l6.2-.9z"/></svg>Oblíbené</button>
- <button data-v="predikce"><svg viewBox="0 0 24 24"><path d="M4 20h16M7 17V9M12 17V5M17 17v-6"/></svg>Predikce</button>
- <button data-v="hraci"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 15-5 16 0"/></svg>Hráči</button>
- <button data-v="historie"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Historie</button>
- <button data-v="chat"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>Chat</button>
- <button data-v="model"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 15l3-4 3 2 4-5"/></svg>Model</button>
+<link rel="preload" href="data/atp.json" as="fetch" crossorigin><link rel="preload" href="data/wta.json" as="fetch" crossorigin><link rel="preconnect" href="https://api.sofascore1.com" crossorigin><link rel="stylesheet" href="style.css"></head><body>
+<header class="top"><div class="brand"><b>TENIS</b><span class="dot"></span><span class="sub">PREDIKCE · NOVÁ</span></div><button class="sbtn" data-search="1" aria-label="Hledat (klávesa /)" title="Hledat (/)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button><div class="upd" id="upd" role="status" aria-live="polite"><span class="g"></span>Načítám data…</div></header>
+<a class="skip" href="#view">Přeskočit na obsah</a><main id="view" tabindex="-1"></main>
+<nav class="bottom" aria-label="Hlavní navigace">
+ <button data-v="zapasy" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5 6c4 3 4 9 0 12M19 6c-4 3-4 9 0 12"/></svg>Zápasy</button>
+ <button data-v="oblibene"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.8 5.8 6.2.9-4.5 4.4 1 6.2L12 17.4 6.5 20.3l1-6.2L3 9.7l6.2-.9z"/></svg>Oblíbené</button>
+ <button data-v="predikce"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7 17V9M12 17V5M17 17v-6"/></svg>Predikce</button>
+ <button data-v="hraci"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 15-5 16 0"/></svg>Hráči</button>
+ <button data-v="historie"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Historie</button>
+ <button data-v="chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>Chat</button>
+ <button data-v="model"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 15l3-4 3 2 4-5"/></svg>Model</button>
 </nav>
 <script src="model.js"></script><script src="live.js"></script><script src="app.js"></script></body></html>

@@ -16,7 +16,7 @@ test("name matching + odds + value",()=>{const ix=T.nameIndex([{n:"Jannik Sinner
  assert.equal(T.fracToDec("3/4"),1.75);assert.ok(T.value(.6,1.9));assert.ok(!T.value(.5,1.9))});
 test("liveState parses sofascore event",()=>{const s=T.liveState({homeScore:{period1:6,period2:3,point:"40"},awayScore:{period1:4,period2:2,point:"A"},firstToServe:1});
  assert.deepEqual([s.sa,s.sb,s.ga,s.gb,s.pa,s.pb,s.aServes],[1,0,3,2,3,4,false])});
-test("built data + model sanity",()=>{for(const t of ["atp","wta"]){const D=require(`../web/data/${t}.json`);assert.equal(D.coef.length,4);assert.ok(D.metrics.model.brier<D.metrics.raw_overall_elo.brier);let mx=0;D.sample_X.forEach((x,i)=>{mx=Math.max(mx,Math.abs(1/(1+Math.exp(-T.gbRaw(D.gbm,x)))-D.sample_p[i]))});assert.ok(mx<1e-4,"GBM JS != sklearn "+mx);
+test("built data + model sanity",()=>{for(const t of ["atp","wta"]){const D=require(`../web/data/${t}.json`);assert.equal(D.coef.length,4);assert.ok(D.metrics.model.brier<D.metrics.raw_overall_elo.brier);let mx=0;D.sample_X.forEach((x,i)=>{mx=Math.max(mx,Math.abs(1/(1+Math.exp(-T.gbRaw(D.gbm,x)))-D.sample_p[i]))});assert.ok(mx<1e-5,"GBM JS != python "+mx);let mm=0;D.sample_X.forEach((x,i)=>{mm=Math.max(mm,Math.abs(T.gbRaw(D.gbm,x)-D.sample_margin[i]))});assert.ok(mm<1e-5,"margin "+mm);console.log(t,"parita p",mx,"margin",mm);assert.equal(D.features.length,20);
  const top=D.players.slice().sort((a,b)=>b.e-a.e);assert.ok(T.predict(D.coef,top[0],top[50],"Hard")>.7)}});
 test("TB: rotace podání 0-0, 1-0, 2-1, 6-6",()=>{const A=true;
  assert.equal(T.tbServer(A,0),true);   // 0-0: podává ten, kdo je na řadě
@@ -62,3 +62,8 @@ test("de-vig + value tip přežije stažení k trhu",()=>{const d=T.devig(1.5,2.
  assert.equal(T.valueTip(.62,[1.5,2.6]),null);           // model blízko trhu → nic
  const t=T.valueTip(.85,[1.5,2.6]);assert.ok(t&&t.side===0&&t.ev>.03);
  assert.equal(T.valueTip(.5,[1.9,1.9]),null);assert.ok(T.valueTip(.35,[1.9,1.9]).side===1)});
+test("pbpSeries: průběh z point-by-point",()=>{const G=[];// A drží, B drží ... A brejkne v 3. gamu
+ const hold=(srv,h,a)=>({set:1,game:G.length+1,h,a,serving:srv,scoring:srv,points:[["15","0"],["30","0"],["40","0"],["0","0"]].map(x=>srv===1?x:[x[1],x[0]])});
+ G.push(hold(1,1,0));G.push(hold(2,1,1));G.push({set:1,game:3,h:2,a:1,serving:1,scoring:1,points:[["15","0"]]});G[2].serving=2;G[2].points=[["15","0"],["30","0"],["40","0"],["0","0"]];
+ const s=T.pbpSeries(.64,.64,G,3,false);assert.ok(s.length>10);assert.ok(Math.abs(s[0].p-.5)<.02);const b=s.find(x=>x.ev==="break");assert.ok(b&&b.p>.6,JSON.stringify(b));
+ s.forEach(x=>assert.ok(x.p>=0&&x.p<=1))});
