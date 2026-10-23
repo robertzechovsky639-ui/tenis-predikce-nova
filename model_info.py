@@ -56,10 +56,12 @@ def build_info(outd="web/data", root="."):
             "calibration": m.get("calibration"),
             "recent": [x for x in (recent_acc(D.get("backtest"),d) for d in (7,30)) if x],
             "added": D.get("added"), "light_update": D.get("light_update"),
-            "trained_at": D.get("trained_at"),
+            "trained_at": D.get("trained_at"), "guard": D.get("guard"),
         }
     info["last_full_retrain"] = next((v["trained_at"] for v in info["tours"].values() if v.get("trained_at")), None) or _git_time("(full)") or _git_time("(light)", f"{outd}/atp.json", invert=True)
     info["last_hourly_update"] = _git_time("(light)") or _git_time("Aktualizace dat")
+    rl = _j(f"{outd}/retrain_log.json")
+    if rl: info["retrain_log"] = rl[-6:]
     rs = _j(f"{root}/data/recent_sources.json")
     if rs: info["data_sources"] = rs
     tools = {k:_j(f"{root}/tools/{k}.json") for k in ("game_validation","inplay_ml_results","odds_backtest_results")}

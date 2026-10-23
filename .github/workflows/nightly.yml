@@ -24,6 +24,7 @@ jobs:
           H=$(TZ=Europe/Prague date +%H)
           S="${{ github.event.schedule }}"
           MODE=full; RUN=1
+          [ "${{ github.event_name }}" = "push" ] && MODE=light   # push = jen web se stávajícím modelem, bez retrainu
           if [ "${{ github.event_name }}" = "schedule" ]; then
             if [ "$S" = "15 * * * *" ]; then MODE=light
               [ "$H" = "04" ] && RUN=0   # v hodině plného retrainu lehkou přeskočit

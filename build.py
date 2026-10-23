@@ -33,6 +33,10 @@ def calib(p,y):
         if m.sum(): out.append([round(float(p[m].mean()),4),round(float(y[m].mean()),4),int(m.sum())])
     return out
 XGB_P=dict(learning_rate=0.03,max_depth=4,n_estimators=400,subsample=0.8,colsample_bytree=0.8,min_child_weight=20,reg_lambda=1.0,tree_method="hist",random_state=0,verbosity=0,n_jobs=4)
+def guard_ok(new_brier,cur_brier,tol=0.002):
+    """nový model projde, pokud jeho test Brier není horší než stávající o víc než tol"""
+    return cur_brier is None or new_brier<=cur_brier+tol
+
 def export_xgb(clf,X0):
     """stromy XGBoost -> stejný formát jako HGB: [f,th,missing_left,l,r,is_leaf,value]; split x<th (float32); vnitřní hodnoty = cover-vážený průměr (Saabas)"""
     bst=clf.get_booster(); trees=[]
@@ -210,10 +214,23 @@ def build(tour):
         "metrics":{"test_from":"2024-01-01","model":res["gbm_iso"] if best=="gbm" else res["lr_2010"],"raw_overall_elo":res["elo_only"],"all":res,"calibration":calib(pt,Y[te]),"train":{"elo_from":int(D.min()) if False else 1968,"gbm_eval":"2000–2021, kalibrace 2022–2023","gbm_shipped":f"2000-01-01 až {MAXD}, kalibrace holdout od {hcut}","lr":"2010–2023 (dodávaná LR 2010+ vše)"}},
         "data_through":MAXD,"sackmann_through":last_sack,"added":added,"avg_spw":round(avg_spw,4),"players":players,"matches":matches,"backtest":bt,
         "sample_X":[[None if math.isnan(v) else v for v in row] for row in X[te][:50].tolist()],"sample_p":[float(v) for v in clf_ship.predict_proba(X[te][:50])[:,1]],"sample_margin":[float(v) for v in clf_ship.predict(X[te][:50],output_margin=True)]})
-    if LIGHT:
+    rejected=False
+    if not LIGHT and os.path.exists(f'web/data/{tour}.json') and os.environ.get("RETRAIN_GUARD","1")=="1":
+        # guard: nový model se nasadí jen pokud test Brier není horší než stávající o víc než 0.002
+        try: old_m=json.load(open(f'web/data/{tour}.json'))
+        except Exception: old_m=None
+        ob=((old_m or {}).get("metrics") or {}).get("model",{}).get("brier"); nb=out["metrics"]["model"]["brier"]
+        entry={"at":dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes").replace("+00:00","Z"),"tour":tour,"new_brier":round(nb,5),"current_brier":None if ob is None else round(ob,5),"accepted":guard_ok(nb,ob)}
+        if not entry["accepted"]:
+            rejected=True; prev=old_m; print(tour,"GUARD: nový model horší (Brier",round(nb,4),"vs",round(ob,4),") -> ponechávám předchozí model")
+        try: log=json.load(open(f"{OUTD}/retrain_log.json"))
+        except Exception: log=[]
+        json.dump((log+[entry])[-60:],open(f"{OUTD}/retrain_log.json","w"),ensure_ascii=False)
+        out["guard"]=entry
+    if LIGHT or rejected:
         for k_ in ("best","coef","features","gbm","gbm_kind","iso","shipped","metrics","backtest","sample_X","sample_p","sample_margin","importance","importance_kind","trained_at"):
             if k_ in prev: out[k_]=prev.get(k_)
-        out["light_update"]=dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes").replace("+00:00","Z")
+        if LIGHT: out["light_update"]=dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes").replace("+00:00","Z")
     out=json.loads(json.dumps(out).replace("NaN","null").replace("-Infinity","-1e300").replace("Infinity","1e300")); mt=out.pop("matches"); out["matches_file"]=f"{tour}_m.json"; json.dump({"matches":mt},open(f"{OUTD}/{tour}_m.json","w"),separators=(",",":"),allow_nan=False); json.dump(out,open(f"{OUTD}/{tour}.json","w"),ensure_ascii=False,separators=(",",":"),allow_nan=False)
     return out
 if __name__=="__main__":

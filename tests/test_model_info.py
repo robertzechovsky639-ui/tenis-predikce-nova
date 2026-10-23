@@ -23,4 +23,13 @@ class T(unittest.TestCase):
         r = MI.recent_acc(bt, 7); self.assertEqual(r["n"], 2); self.assertEqual(r["accuracy"], 0.5); self.assertAlmostEqual(r["brier"], (0.04+0.36)/2, places=4)
         self.assertEqual(MI.split_importance({"trees":[[[0,1,0,1,2,0,0],[0,0,0,0,0,1,1],None],[[1,1,0,1,2,0,0]]]},["a","b"]), [["a",0.5],["b",0.5]])
 
+
+
+class Guard(unittest.TestCase):
+    def test_guard(self):
+        import importlib.util
+        src = open("build.py").read(); i = src.index("def guard_ok"); j = src.index("def export_xgb")
+        ns = {}; exec(src[i:j], ns); g = ns["guard_ok"]
+        self.assertTrue(g(0.2160, None)); self.assertTrue(g(0.2170, 0.2160)); self.assertTrue(g(0.2150, 0.2160))
+        self.assertFalse(g(0.2181, 0.2160))
 if __name__ == "__main__": unittest.main()
