@@ -740,7 +740,7 @@ atp,T,2026-422,Cincinnati Masters,Hard,20260819,76,N0AE,Brandon Nakashima,MM58,D
 atp,T,2026-422,Cincinnati Masters,Hard,20260819,77,F0F2,Jaime Faria,W09E,Adam Walton,4-6 6-4 7-6(3),R32,17,11,101,58,47,21,16,12,1,97,58,42,22,16,POR,AUS,R,R,188,183,79,98
 atp,T,2026-422,Cincinnati Masters,Hard,20260819,78,AG37,Felix Auger-Aliassime,C0C8,Juan Manuel Cerundolo,7-5 6-1,R32,6,5,54,31,28,13,10,3,3,55,32,20,13,9,CAN,ARG,R,L,193,183,29,51
 atp,T,2026-422,Cincinnati Masters,Hard,20260819,79,TD51,Frances Tiafoe,T0HA,Learner Tien,6-4 4-6 6-4,R32,9,6,91,50,39,20,15,8,3,86,43,34,20,15,USA,USA,R,L,188,180,23,12
-atp,T,2026-422,Cincinnati Masters,Hard,20260819,79,O483,Christopher O'Connell,F0FV,Joao Fonseca,W/O,R32,,,,,,,,,,,,,,,AUS,BRA,R,R,183,188,129,26
+atp,T,2026-422,Cincinnati Masters,Hard,20260819,80,O483,Christopher O'Connell,F0FV,Joao Fonseca,W/O,R32,,,,,,,,,,,,,,,AUS,BRA,R,R,183,188,129,26
 atp,T,2026-422,Cincinnati Masters,Hard,20260819,81,C0E9,Flavio Cobolli,J0DZ,Rafael Jodar,4-6 7-6(3) 6-3,R16,8,3,115,66,44,27,16,7,3,102,67,46,16,15,ITA,ESP,R,R,183,191,10,11
 atp,T,2026-422,Cincinnati Masters,Hard,20260819,82,T0A1,Thiago Agustin Tirante,M0NI,Jakub Mensik,5-7 6-4 6-4,R16,8,2,85,45,38,21,16,9,6,99,58,46,18,16,ARG,CZE,R,R,185,196,50,16
 atp,T,2026-422,Cincinnati Masters,Hard,20260820,83,PL56,Tommy Paul,Z355,Alexander Zverev,4-6 7-6(6) 6-4,R16,9,1,96,63,47,20,16,14,9,102,70,52,17,16,USA,GER,R,R,185,198,24,3
@@ -5910,6 +5910,7 @@ atp,T,sofa-20261022,"Lyon, France",Hard,20261022,31355,,Taylor Fritz,,Pierre-Hug
 atp,T,sofa-20261022,"Lyon, France",Hard,20261022,31353,,Flavio Cobolli,,Stan Wawrinka,6-2 6-4,Round of 16,,,,,,,,,,,,,,,,,,,,,,
 atp,T,sofa-20261022,"Lyon, France",Hard,20261022,31351,,Brandon Nakashima,,Kyrian Jacquet,6-4 6-3,Round of 16,,,,,,,,,,,,,,,,,,,,,,
 wta,T,sofa-20261023,"Osaka, Japan",Hard,20261023,37220,,Ann Li,,Lilli Tagger,6-4 3-6 7-6,Quarterfinals,,,,,,,,,,,,,,,,,,,,,,
+wta,T,sofa-20261023,"Osaka, Japan",Hard,20261023,37219,,Ashlyn Krueger,,Talia Gibson,6-1 6-3,Quarterfinals,,,,,,,,,,,,,,,,,,,,,,
 atp,C,sofa-20261023,"Guangzhou Nansha, China",Hard,20261023,36451,,Coleman Wong,,Jay Friend,7-6 6-1,Quarterfinals,,,,,,,,,,,,,,,,,,,,,,
 atp,C,sofa-20261022,"Lisbon, Portugal",Clay,20261022,36045,,Svyatoslav Gulin,,Andrej Martin,1-6 6-0 6-2,Round of 16,,,,,,,,,,,,,,,,,,,,,,
 atp,C,sofa-20261022,"Cali, Colombia",Clay,20261022,36221,,Felipe Meligeni Alves,,Diego Dedura,6-4 6-2,Round of 16,,,,,,,,,,,,,,,,,,,,,,
