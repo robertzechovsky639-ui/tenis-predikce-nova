@@ -77,7 +77,24 @@ function isPhantom(ev,nowSec){const ch=ev.changes&&ev.changes.changeTimestamp;
 function dedupe(list){const by=new Map();for(const m of list){const k=[norm(m.home),norm(m.away)].sort().join("|");const o=by.get(k);
  if(!o||(m.rank||0)>(o.rank||0))by.set(k,o?{...o,...m}:m)}return [...by.values()]}
 function fracToDec(f){if(!f)return null;const [a,b]=String(f).split("/").map(Number);return b?+(a/b+1).toFixed(2):null}
-function value(p,odds,margin=.05){return odds?p*odds-1>margin:false}
+function value(p,odds,margin=.08){return odds?p*odds-1>margin:false}
 function brier(rows){return rows.reduce((s,[p,y])=>s+(p-y)**2,0)/rows.length}
-const api={SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
+
+// --- Gradient boosting (HistGB export) + izotonická kalibrace ---
+function ddays(a,b){const f=x=>Date.UTC(Math.floor(x/1e4),Math.floor(x/100)%100-1,x%100);return Math.round((f(a)-f(b))/864e5)}
+const LVL={"Grand Slam":4,"Masters":3,"ATP":2,"WTA":2,"WTA 125":1,"Challenger":1,"ITF":1};
+function gbFeatures(a,b,c){a=a||DEF;b=b||DEF;const s=c.surface,d=c.date;const nz=v=>v==null?null:v;
+ const age=p=>p.by!=null?d/1e4-p.by:null,rest=p=>p.last?Math.min(ddays(d,p.last),365):null,h=c.h2h||[0,0];
+ const sub=(x,y)=>x==null||y==null?null:x-y;
+ return [lg(ep(a.e,b.e)),lg(ep(a.s[s],b.s[s])),form(a)-form(b),sub(nz(a.spw),nz(b.spw)),sub(nz(a.rpw),nz(b.rpw)),h[0]-h[1],h[0]+h[1],
+  a.rank>0&&b.rank>0?Math.log(b.rank)-Math.log(a.rank):null,sub(age(a),age(b)),rest(a),rest(b),c.bo||3,c.level??2,SURF.indexOf(s),Math.log1p(a.m||0),Math.log1p(b.m||0)]}
+function gbRaw(g,x){let z=g.base;for(const t of g.trees){let i=0;while(!t[i][5]){const [f,th,ml,l,r]=t[i];const v=x[f];i=(v==null||Number.isNaN(v))?(ml?l:r):(v<=th?l:r)}z+=t[i][6]}return z}
+function isoMap(iso,p){const X=iso.x,Y=iso.y;if(p<=X[0])return Y[0];if(p>=X[X.length-1])return Y[Y.length-1];let lo=0,hi=X.length-1;while(hi-lo>1){const m=(lo+hi)>>1;X[m]<=p?lo=m:hi=m}
+ return X[hi]===X[lo]?Y[lo]:Y[lo]+(Y[hi]-Y[lo])*(p-X[lo])/(X[hi]-X[lo])}
+function predictGB(D,a,b,c){const x=gbFeatures(a,b,c);const pr=1/(1+Math.exp(-gbRaw(D.gbm,x)));return isoMap(D.iso,pr)}
+// symetrizace: průměr p(A,B) a 1-p(B,A)
+function predictBest(D,a,b,c){if(D.best!=="gbm"||!D.gbm)return predict(D.coef,a,b,c.surface);const h=c.h2h||[0,0];
+ const p1=predictGB(D,a,b,c),p2=predictGB(D,b,a,{...c,h2h:[h[1],h[0]]});return (p1+1-p2)/2}
+
+const api={ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
 if(typeof module!=="undefined")module.exports=api;root.TM=api})(typeof globalThis!=="undefined"?globalThis:this);

@@ -1,0 +1,31 @@
+{
+ "generated": "2026-10-23",
+ "chain": [
+  {
+   "source": "sackmann",
+   "ok": false,
+   "error": "HTTP Error 404: Not Found"
+  },
+  {
+   "source": "tml",
+   "ok": true,
+   "rows": 5577,
+   "from": "20260526",
+   "to": "20261018"
+  },
+  {
+   "source": "sofascore",
+   "ok": true,
+   "rows": 617,
+   "from": "20261013",
+   "to": "20261022"
+  },
+  {
+   "source": "espn",
+   "ok": false,
+   "error": "espn: žádný požadavek neprošel"
+  }
+ ],
+ "rows": 5921,
+ "dupes_removed": 273
+}

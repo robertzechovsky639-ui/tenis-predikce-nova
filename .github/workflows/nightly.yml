@@ -1,0 +1,48 @@
+name: Noční retrain a nasazení
+on:
+  schedule:
+    - cron: "30 2 * * *"   # 04:30 Praha (letní čas, UTC+2); v zimě 03:30
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency: { group: pages, cancel-in-progress: false }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: pip install numpy "scikit-learn>=1.5"
+      - name: Stáhnout nové výsledky (failover Sackmann → TML → Sofascore → ESPN)
+        if: github.event_name != 'push'
+        run: python3 fetch_recent.py
+      - name: Přetrénovat model
+        run: python3 build.py
+      - name: Testy
+        run: |
+          node --test tests/
+          python3 -m unittest discover -s tests
+      - name: Uložit data zpět do repa
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add data/recent.csv data/recent_sources.json web/data
+          git diff --cached --quiet || git commit -m "Noční aktualizace dat a modelu [skip ci]" && git push
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: web }
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4
