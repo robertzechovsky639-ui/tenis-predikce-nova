@@ -12,7 +12,8 @@ const getP=(t,n)=>{const i=TM.findPlayer(IX[t],n);return i==null?null:DB[t].play
 function preProb(m){const a=getP(m.tour,m.home),b=getP(m.tour,m.away);return {a,b,p:P(m.tour,a,b,m.surface,m),known:!!(a&&b)}}
 const servC=new Map();
 function inplay(m,pre,st){const key=m.id;let sp=servC.get(key);if(!sp){const pr=TM.servePrior(pre.a,pre.b,DB[m.tour].avg_spw);sp=TM.calibrateServe(pr[0],pr[1],pre.p,m.bo);servC.set(key,sp)}
- let [pA,pB]=sp;if(m.stats){pA=TM.bayes(pA,m.stats.hWon,m.stats.hPlayed);pB=TM.bayes(pB,m.stats.aWon,m.stats.aPlayed)}
+ let [pA,pB]=sp;if(m.stats&&m.tour==="wta"){ // validace na GS PBP: Bayes zlepšil ženy, u mužů zhoršil → muži staticky
+ pA=TM.bayes(pA,m.stats.hWon,m.stats.hPlayed);pB=TM.bayes(pB,m.stats.aWon,m.stats.aPlayed)}
  const s=st||TM.liveState(m.ev);return {...TM.inPlay(pA,pB,s),pA,pB,s,games:TM.simGames(pA,pB,s)}}
 function prob(m){const pre=preProb(m);let p=pre.p,ip=null;if(m.status==="live"&&m.ev&&m.sets.length){ip=inplay(m,pre);p=ip.match}return {...pre,live:p,ip}}
 // --- historie predikcí ---
@@ -39,14 +40,16 @@ const mini=(l,p)=>`<div class="mini"><span style="min-width:96px">${l}</span><b>
 function badge(c){const k={ATP:"atp",WTA:"wta","WTA 125":"wta",Challenger:"ch",ITF:"itf"}[c]||"";return `<span class="badge ${k}">${esc(c)}</span>`}
 function matchRow(m){const pr=prob(m),p=pr.live;if(pr.known)logPred(m,pr.p);const st=m.status==="live"&&m.ev?TM.liveState(m.ev):null;
  const sc=i=>m.sets.map((s,k)=>`<span class="${m.status==="live"&&k===m.sets.length-1?"cur":""}">${s[i]}</span>`).join("")+(m.status==="live"&&m.point&&m.point[i]!=null?`<span class="pt">${esc(m.point[i])}</span>`:"");
- const t=m.status==="live"?`<span class="badge live">● ${esc(m.desc||"živě")}</span>`:m.status==="finished"?`<span class="badge">Konec</span>`:`<span class="badge">${new Date(m.start*1000).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}</span>`;
- const o=m.odds;const ok=pr.known&&pr.a.m>=20&&pr.b.m>=20;const v=o&&ok?[TM.value(p,o[0]),TM.value(1-p,o[1])]:[0,0];
+ const t=m.status==="live"?`<span class="badge live">● ${esc(m.desc||"živě")}</span>${m.stale?`<span class="badge">⚠ skóre se nemění 15+ min</span>`:""}`:m.status==="finished"?`<span class="badge">${m.retired?esc(m.desc):"Konec"}</span>`:`<span class="badge">${new Date(m.start*1000).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}</span>`;
+ const o=m.odds;const ok=pr.known&&pr.a.m>=20&&pr.b.m>=20;const vt=o&&ok?TM.valueTip(p,o):null;const v=[vt&&vt.side===0,vt&&vt.side===1];
  return `<div class="m" data-id="${m.id}"><div class="row" style="margin-bottom:4px">${t}<small class="nm">${esc(SN[m.surface])}${pr.known?"":" · málo dat o hráčích"}</small></div>
- ${[0,1].map(i=>{const n=i?m.away:m.home;return `<div class="row"><span class="srv ${st&&st.known&&(st.aServes===!i)?"on":""}"></span><span class="nm ${m.winner===i+1?"w":""}">${esc(n)}</span><button class="star ${isFav(n)?"on":""}" data-fav="${esc(n)}">★</button><div class="sc">${sc(i)}</div></div>`}).join("")}
+ ${[0,1].map(i=>{const n=i?m.away:m.home;return `<div class="row"><span class="srv ${st&&st.known&&(st.serverNow===!i)?"on":""}"></span><span class="nm ${m.winner===i+1?"w":""}">${esc(n)}</span><button class="star ${isFav(n)?"on":""}" data-fav="${esc(n)}">★</button><div class="sc">${sc(i)}</div></div>`}).join("")}
  <div style="margin-top:6px">${mini(m.status==="live"?"Výhra (živě)":"Výhra",p)}</div>
  ${o?`<div class="odds">Kurzy <span class="ob ${v[0]?"val":""}">${o[0]}</span><span class="ob ${v[1]?"val":""}">${o[1]}</span>${v[0]||v[1]?`<span class="badge val">VALUE: ${esc(v[0]?m.home:m.away)}</span>`:""}</div>`:""}
  ${S.open===m.id?detail(m,pr):""}</div>`}
-function factors(t,a,b,s){return `<table>${TM.explain(DB[t].coef,a,b,s).map(f=>`<tr><td>${f.k}</td><td><small>${esc(f.d)}</small></td><td class="num ${f.v>=0?"W":"L"}" style="text-align:right">${f.v>=0?"+":""}${f.v.toFixed(2)}</td></tr>`).join("")}</table><small>Kladné hodnoty (log-odds) zvyhodňují prvního hráče.</small>`}
+function factors(t,a,b,s,o={}){const D=DB[t];if(D.best==="gbm"&&D.gbm){const lvl=o.level??2;const r=TM.explainGB(D,a,b,{surface:s,date:TODAY,bo:o.bo||3,level:lvl,h2h:h2h(t,a,b)});
+  return `<table>${r.map(f=>`<tr><td>${f.k}</td><td class="num ${f.v>=0?"W":"L"}" style="text-align:right">${f.v>=0?"+":""}${f.v.toFixed(2)}</td></tr>`).join("")}</table><small>Příspěvky prvků v gradient boostingu (Saabas, log-odds před kalibrací, symetrizováno). Kladné zvýhodňují prvního hráče.</small>`}
+ return `<table>${TM.explain(D.coef,a,b,s).map(f=>`<tr><td>${f.k}</td><td><small>${esc(f.d)}</small></td><td class="num ${f.v>=0?"W":"L"}" style="text-align:right">${f.v>=0?"+":""}${f.v.toFixed(2)}</td></tr>`).join("")}</table><small>Kladné hodnoty (log-odds) zvyhodňují prvního hráče.</small>`}
 function detail(m,pr){let h=`<div class="card hi" style="margin:10px 0 0"><h3>Predikce před zápasem</h3>${probBlock(m.home,m.away,pr.p)}<h3 style="margin-top:12px">Faktory</h3>${factors(m.tour,pr.a,pr.b,m.surface)}</div>`;
  if(pr.ip){const ip=pr.ip,s=ip.s;h+=`<div class="card" style="margin:10px 0 0"><h3>In-play (stav ${s.sa}:${s.sb} sety, ${s.ga}:${s.gb} gamy)</h3>
  ${mini("Zápas",ip.match)}${mini("Aktuální set",ip.set)}
@@ -73,7 +76,7 @@ predikce(){const D=DB[S.tour];const opts=D.players.filter(p=>p.m>=5).sort((a,b)=
  if(a&&b&&a!==b){const p=P(S.tour,a,b,S.surf,{bo:S.bo,level:S.lvl});const ia=D.players.indexOf(a),ib=D.players.indexOf(b);
   const h=D.matches.filter(m=>(m[1]===ia&&m[2]===ib)||(m[1]===ib&&m[2]===ia)).reverse(),hw=h.filter(m=>m[1]===ia).length;
   body=`<div class="card hi"><h3>Pravděpodobnost výhry · ${SN[S.surf]}</h3>${probBlock(a.n,b.n,p)}</div>
-  <div class="card"><h3>Proč (lineární rozklad Elo/forma)</h3>${factors(S.tour,a,b,S.surf)}<small>Výsledná pravděpodobnost je z modelu ${D.best==="gbm"?"gradient boosting (16 vstupů: Elo, povrch, forma, podání/příjem, H2H, žebříček, věk, odpočinek, počet setů, úroveň turnaje)":"logistické regrese"}.</small></div>
+  <div class="card"><h3>Proč</h3>${factors(S.tour,a,b,S.surf,{bo:+S.bo||3,level:S.lvl})}<small>Výsledná pravděpodobnost je z modelu ${D.best==="gbm"?"gradient boosting (16 vstupů: Elo, povrch, forma, podání/příjem, H2H, žebříček, věk, odpočinek, počet setů, úroveň turnaje)":"logistické regrese"}.</small></div>
   <div class="card"><h3>Elo</h3><table><tr><th>Hráč</th><th>Celk.</th><th>Tvrdý</th><th>Antuka</th><th>Tráva</th></tr>${[a,b].map(x=>`<tr><td>${esc(x.n)}</td><td class="num">${Math.round(x.e)}</td>${TM.SURF.map(s=>`<td class="num">${Math.round(x.s[s])}</td>`).join("")}</tr>`).join("")}</table></div>
   <div class="card"><h3>Vzájemné zápasy <span class="num" style="color:var(--pink)">${hw}</span> : <span class="num" style="color:var(--vio)">${h.length-hw}</span></h3>${h.length?`<table>${h.slice(0,10).map(m=>`<tr><td>${fd(m[0])}</td><td><b>${esc(D.players[m[1]].n)}</b></td><td>${esc(m[4])}</td><td><small>${esc(m[5])} · ${SN[m[3]]}</small></td></tr>`).join("")}</table>`:"<small>Žádné vzájemné zápasy od 2015.</small>"}</div>
   <div class="card"><h3>Forma (posl. 10)</h3><table>${[a,b].map(x=>`<tr><td>${esc(x.n)}</td><td>${x.f.slice().reverse().map(r=>`<span class="${r?"W":"L"}">${r?"V":"P"}</span>`).join(" ")}</td><td class="num">${pc(TM.form(x))} %</td></tr>`).join("")}</table></div>`}
@@ -115,8 +118,8 @@ model(){return `<h1>Model</h1>${["atp","wta"].map(t=>{const D=DB[t],m=D.metrics;
 // --- chat ---
 function answer(q){const n=TM.norm(q);const surf=/antuk|clay/.test(n)?"Clay":/trav|grass/.test(n)?"Grass":/tvrd|hard/.test(n)?"Hard":null;
  const find=s=>{for(const t of ["atp","wta"]){const ix=IX[t];let i=TM.findPlayer(ix,s);if(i==null){const w=TM.norm(s).split(" ").filter(x=>x.length>2);const c=DB[t].players.map((p,k)=>[p,k]).filter(([p])=>w.some(x=>TM.norm(p.n).split(" ").includes(x))).sort((a,b)=>b[0].m-a[0].m)[0];if(c)i=c[1]}if(i!=null)return [t,DB[t].players[i]]}return null};
- if(/value|kurz/.test(n)){const v=S.list.filter(m=>{const r=prob(m);return m.odds&&r.known&&r.a.m>=20&&r.b.m>=20}).map(m=>{const p=prob(m).live;return [m,p]}).filter(([m,p])=>TM.value(p,m.odds[0])||TM.value(1-p,m.odds[1]));
-  return v.length?v.slice(0,8).map(([m,p])=>TM.value(p,m.odds[0])?`${m.home} @ ${m.odds[0]} (model ${pc(p)} %)`:`${m.away} @ ${m.odds[1]} (model ${pc(1-p)} %)`).join("\n"):"Teď nevidím žádné value tipy (načti záložku Zápasy s kurzy)."}
+ if(/value|kurz/.test(n)){const v=S.list.filter(m=>{const r=prob(m);return m.odds&&r.known&&r.a.m>=20&&r.b.m>=20}).map(m=>{const p=prob(m).live;return [m,p]}).map(([m,p])=>[m,p,TM.valueTip(p,m.odds)]).filter(x=>x[2]).sort((x,y)=>y[2].ev-x[2].ev);
+  return v.length?v.slice(0,8).map(([m,p,t])=>`${t.side?m.away:m.home} @ ${t.odds} (model po stažení k trhu ${pc(t.p)} %, férově ${pc(t.fair)} %, EV ${(t.ev*100).toFixed(1)} %)`).join("\n"):"Teď nevidím žádné value tipy (načti záložku Zápasy s kurzy)."}
  if(/nejlep|top|nejsiln/.test(n)){const t=/wta|zen|hrack/.test(n)?"atp_wta".slice(4):"atp";const s=surf;const D=DB[t];const L=D.players.filter(p=>p.m>=10&&p.last>=D.data_through-10000).sort((a,b)=>(s?b.s[s]-a.s[s]:b.e-a.e)).slice(0,5);
   return `Top ${t.toUpperCase()}${s?" – "+SN[s]:""}:\n`+L.map((p,i)=>`${i+1}. ${p.n} (${Math.round(s?p.s[s]:p.e)})`).join("\n")}
  const vs=q.split(/\s+(?:vs\.?|proti|x|-)\s+/i);if(vs.length===2){const a=find(vs[0].replace(/^(kdo vyhraje|predikce)\s*/i,"")),b=find(vs[1].replace(/\s+na\s+.*$/i,""));

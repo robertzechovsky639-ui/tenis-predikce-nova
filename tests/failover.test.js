@@ -15,3 +15,9 @@ for(const [fail,exp] of [[[],"Sofascore"],[["sofascore"],"ESPN (záloha)"],[["so
 test("live: všechny zdroje mimo provoz -> prázdný seznam, bez výjimky",async()=>{down=new Set(["sofascore","espn","365scores"]);const r=await L.getLive();assert.equal(r.source,"nedostupné");assert.equal(r.list.length,0);assert.equal(r.errs.length,3)});
 test("live: simulovaný výpadek přes LIVE.FAIL (?fail=)",async()=>{down=new Set();L.FAIL.add("sofascore");const r=await L.getLive();L.FAIL.clear();assert.equal(r.source,"ESPN (záloha)")});
 test("den: Sofascore dole -> ESPN",async()=>{down=new Set(["sofascore"]);const r=await L.getDay("2026-10-23");assert.equal(r.source,"ESPN (záloha)")});
+test("Sofascore parsing: přerušeno, skreč, stale, GS ženy",()=>{require("../web/model.js");require("../web/live.js");const L=globalThis.LIVE;
+ const base=(st,ds,extra={})=>({id:1,tournament:{name:"US Open, New York, USA",category:{id:6,name:"WTA",slug:"wta"},uniqueTournament:{name:"US Open"}},homeTeam:{name:"A B",type:1},awayTeam:{name:"C D",type:1},status:{type:st,description:ds},homeScore:{period1:6,point:"A"},awayScore:{period1:4,point:"40"},startTimestamp:0,groundType:"Hardcourt outdoor",...extra});
+ const s=L.fromSofa(base("interrupted","Interrupted"));assert.ok(s&&s.status==="live"&&s.suspended&&s.desc==="Přerušeno");
+ const r=L.fromSofa(base("finished","Retired",{winnerCode:1}));assert.ok(r.retired&&r.desc==="Skreč"&&r.winner===1);
+ const o=L.fromSofa(base("inprogress","2nd set",{changes:{changeTimestamp:Date.now()/1000-3600}}));assert.ok(o.stale);
+ assert.ok(o.slam&&o.bo===3);});

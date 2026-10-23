@@ -37,7 +37,7 @@ function setDist(pA,pB,ga,gb,aServes,pts,T){const m=new Map();
   const g=aS?gameWin(pA,pt[0],pt[1]):1-gameWin(pB,pt[1],pt[0]);const x=f(ga+1,gb,!aS,false),y=f(ga,gb+1,!aS,false);
   const r=x.map((v,i)=>g*v+(1-g)*y[i]);if(!first)m.set(k,r);return r};return f(ga,gb,aServes,true)}
 // stav: {sa,sb,ga,gb,pa,pb,aServes,bo}; vrátí pravděpodobnosti
-function inPlay(pA,pB,st){const need=st.bo===5?3:2;const T=(sa,sb)=>(st.bo===5&&sa===need-1&&sb===need-1)?10:7;const mm=new Map();
+function inPlay(pA,pB,st){const need=st.bo===5?3:2;if(st.sa>=need||st.sb>=need){const w=st.sa>=need?1:0;return {match:w,set:w,tiebreak:0,decider:0}}const T=(sa,sb)=>tbTarget(st,sa,sb);const mm=new Map();
  const M=(sa,sb,aS)=>{if(sa===need)return 1;if(sb===need)return 0;const k=sa*10+sb+(aS?100:0);if(mm.has(k))return mm.get(k);
   const d=setDist(pA,pB,0,0,aS,[0,0],T(sa,sb));const r=d[0]*M(sa+1,sb,true)+d[1]*M(sa+1,sb,false)+d[2]*M(sa,sb+1,true)+d[3]*M(sa,sb+1,false);mm.set(k,r);return r};
  const R=(sa,sb,aS)=>{if(sa===need||sb===need)return 0;if(sa===need-1&&sb===need-1)return 1;const d=setDist(pA,pB,0,0,aS,[0,0],T(sa,sb));
@@ -46,10 +46,15 @@ function inPlay(pA,pB,st){const need=st.bo===5?3:2;const T=(sa,sb)=>(st.bo===5&&
  const match=d[0]*M(st.sa+1,st.sb,true)+d[1]*M(st.sa+1,st.sb,false)+d[2]*M(st.sa,st.sb+1,true)+d[3]*M(st.sa,st.sb+1,false);
  const decider=(st.sa===need-1&&st.sb===need-1)?1:d[0]*R(st.sa+1,st.sb,true)+d[1]*R(st.sa+1,st.sb,false)+d[2]*R(st.sa,st.sb+1,true)+d[3]*R(st.sa,st.sb+1,false);
  return {match,set:d[0]+d[1],tiebreak:d[4],decider}}
+// server v tiebreaku: bod 1 podává ten, kdo je na řadě; pak po dvou (2.–3. soupeř, 4.–5. první…). n = počet odehraných bodů v TB
+function tbServer(aStarts,n){return (Math.floor((n+1)/2)%2===0)===aStarts}
+function nextSetFirstServer(aStartedTB){return !aStartedTB}
+// 10bodový TB jen na Grand Slamech v rozhodujícím setu (5. muži, 3. ženy) za 6:6; jinak vždy do 7
+function tbTarget(st,sa,sb){const need=st.bo===5?3:2;return st.slam&&sa===need-1&&sb===need-1?10:7}
 function rng(seed){return()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}}
 function simGames(pA,pB,st,n=1500,seed=7){const r=rng(seed),need=st.bo===5?3:2;const out=[];
  for(let i=0;i<n;i++){let {sa,sb,ga,gb,aServes:aS}=st,pa=st.pa||0,pb=st.pb||0,tot=st.prevGames||0;
-  while(sa<need&&sb<need){const tb=ga===6&&gb===6;const T=(st.bo===5&&sa===need-1&&sb===need-1)?10:7;
+  while(sa<need&&sb<need){const tb=ga===6&&gb===6;const T=tbTarget(st,sa,sb);
    if(tb){let a=pa,b=pb;while(!((a>=T||b>=T)&&Math.abs(a-b)>=2)){const n2=a+b;const as=(Math.floor((n2+1)/2)%2===0)===aS;const p=as?pA:1-pB;r()<p?a++:b++}
     a>b?ga++:gb++;aS=!aS}else{const p=aS?pA:pB;let s=aS?pa:pb,o=aS?pb:pa;while(!((s>=4||o>=4)&&Math.abs(s-o)>=2))r()<p?s++:o++;const srvWon=s>o;
     if(aS===srvWon)ga++;else gb++;aS=!aS}
@@ -70,14 +75,21 @@ function liveState(ev){const h=ev.homeScore||{},a=ev.awayScore||{};let sa=0,sb=0
  let ga=cur[0]||0,gb=cur[1]||0;let pa=0,pb=0;
  if(ga===6&&gb===6){pa=+h.point||0;pb=+a.point||0}else{pa=ptNum(h.point);pb=ptNum(a.point);if(pa===4&&pb===3){}else if(pb===4&&pa===3){}}
  // podávající: sofascore firstToServe (1=domácí) + počet odehraných gamů (TB = 1 game)
- const games=prev+ga+gb;const first=ev.firstToServe===2?false:true;const aServes=(games%2===0)===first;
- return {sa,sb,ga,gb,pa,pb,aServes,prevGames:prev,bo:ev.defaultPeriodCount===5||/grand slam/i.test((ev.tournament&&ev.tournament.uniqueTournament&&ev.tournament.uniqueTournament.category&&"")||"")?5:(ev.bo||3),known:ev.firstToServe!=null}}
+ const games=prev+ga+gb;const first=ev.firstToServe===2?false:true;const aServes=(games%2===0)===first; // TB se počítá jako 1 game
+ const tb=ga===6&&gb===6;const serverNow=tb?tbServer(aServes,pa+pb):aServes;
+ return {sa,sb,ga,gb,pa,pb,aServes,serverNow,tb,tbTo:tbTarget({bo:ev.bo||3,slam:!!ev.slam},sa,sb),prevGames:prev,bo:ev.bo||3,slam:!!ev.slam,known:ev.firstToServe!=null}}
 function isPhantom(ev,nowSec){const ch=ev.changes&&ev.changes.changeTimestamp;
  if(ch&&nowSec-ch>45*60)return true;if(ev.startTimestamp&&Math.abs(nowSec-ev.startTimestamp)>12*3600)return true;return false}
 function dedupe(list){const by=new Map();for(const m of list){const k=[norm(m.home),norm(m.away)].sort().join("|");const o=by.get(k);
  if(!o||(m.rank||0)>(o.rank||0))by.set(k,o?{...o,...m}:m)}return [...by.values()]}
 function fracToDec(f){if(!f)return null;const [a,b]=String(f).split("/").map(Number);return b?+(a/b+1).toFixed(2):null}
-function value(p,odds,margin=.08){return odds?p*odds-1>margin:false}
+// de-vig: férové pravděpodobnosti z kurzů (power metoda – přirozeně řeší favorit/outsider bias)
+function devig(o1,o2){if(!(o1>1&&o2>1))return null;const r1=1/o1,r2=1/o2;let lo=.5,hi=3;for(let i=0;i<50;i++){const k=(lo+hi)/2;Math.pow(r1,k)+Math.pow(r2,k)>1?lo=k:hi=k}const k=(lo+hi)/2;return [Math.pow(r1,k),Math.pow(r2,k),r1+r2-1]}
+// value tip: model se nejdřív stáhne k trhu (shrink – model není lepší než trh), hrana musí přežít a EV na reálném kurzu musí být kladná
+function valueTip(p,odds,o={}){const {shrink=.5,minEdge=.04,minEV=.03}=o;if(!odds||!odds[0]||!odds[1])return null;const d=devig(odds[0],odds[1]);if(!d)return null;
+ const pa=shrink*p+(1-shrink)*d[0];const c=[[0,pa,d[0],odds[0]],[1,1-pa,d[1],odds[1]]].map(([side,pm,q,od])=>({side,p:pm,fair:q,odds:od,edge:pm-q,ev:pm*od-1,margin:d[2]}));
+ const b=c.sort((x,y)=>y.ev-x.ev)[0];return b.edge>=minEdge&&b.ev>=minEV?b:null}
+function value(p,odds,margin=.08){if(Array.isArray(odds)){const t=valueTip(p,odds);return t?t.side:-1}return odds?p*odds-1>margin:false}
 function brier(rows){return rows.reduce((s,[p,y])=>s+(p-y)**2,0)/rows.length}
 
 // --- Gradient boosting (HistGB export) + izotonická kalibrace ---
@@ -92,9 +104,15 @@ function gbRaw(g,x){let z=g.base;for(const t of g.trees){let i=0;while(!t[i][5])
 function isoMap(iso,p){const X=iso.x,Y=iso.y;if(p<=X[0])return Y[0];if(p>=X[X.length-1])return Y[Y.length-1];let lo=0,hi=X.length-1;while(hi-lo>1){const m=(lo+hi)>>1;X[m]<=p?lo=m:hi=m}
  return X[hi]===X[lo]?Y[lo]:Y[lo]+(Y[hi]-Y[lo])*(p-X[lo])/(X[hi]-X[lo])}
 function predictGB(D,a,b,c){const x=gbFeatures(a,b,c);const pr=1/(1+Math.exp(-gbRaw(D.gbm,x)));return isoMap(D.iso,pr)}
+// Saabas: příspěvek prvku = součet změn hodnoty uzlu podél cesty stromem
+function gbContrib(g,x){const c=new Array(x.length).fill(0);let bias=g.base;for(const t of g.trees){let i=0;bias+=t[0][6];while(!t[i][5]){const [f,th,ml,l,r]=t[i];const v=x[f];const j=(v==null||Number.isNaN(v))?(ml?l:r):(v<=th?l:r);c[f]+=t[j][6]-t[i][6];i=j}}return {bias,c}}
+const GBN={elo_logit:["Elo celkově"],surf_elo_logit:["Elo na povrchu"],form_diff:["Forma (10 zápasů)"],spw_diff:["Body na podání"],rpw_diff:["Body na příjmu"],h2h_diff:["Vzájemné zápasy"],h2h_n:["Vzájemné zápasy"],rank_logratio:["Žebříček"],age_diff:["Věk"],rest_a:["Odpočinek"],rest_b:["Odpočinek"],log_n_a:["Zkušenost (počet zápasů)"],log_n_b:["Zkušenost (počet zápasů)"],best_of:["Kontext zápasu"],level:["Kontext zápasu"],surface:["Kontext zápasu"]};
+function explainGB(D,a,b,c){const h=c.h2h||[0,0];const A=gbContrib(D.gbm,gbFeatures(a,b,c)),B=gbContrib(D.gbm,gbFeatures(b,a,{...c,h2h:[h[1],h[0]]}));
+ const m=new Map();D.features.forEach((f,i)=>{const k=(GBN[f]||[f])[0];m.set(k,(m.get(k)||0)+(A.c[i]-B.c[i])/2)});
+ return [...m].map(([k,v])=>({k,v})).sort((x,y)=>Math.abs(y.v)-Math.abs(x.v))}
 // symetrizace: průměr p(A,B) a 1-p(B,A)
 function predictBest(D,a,b,c){if(D.best!=="gbm"||!D.gbm)return predict(D.coef,a,b,c.surface);const h=c.h2h||[0,0];
  const p1=predictGB(D,a,b,c),p2=predictGB(D,b,a,{...c,h2h:[h[1],h[0]]});return (p1+1-p2)/2}
 
-const api={ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
+const api={devig,valueTip,gbContrib,explainGB,tbTarget,tbServer,nextSetFirstServer,ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
 if(typeof module!=="undefined")module.exports=api;root.TM=api})(typeof globalThis!=="undefined"?globalThis:this);

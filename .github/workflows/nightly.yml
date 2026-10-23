@@ -1,8 +1,12 @@
-name: Noční retrain a nasazení
+name: Retrain a nasazení
 on:
   schedule:
-    - cron: "30 2 * * *"   # 04:30 Praha (letní čas, UTC+2); v zimě 03:30
+    - cron: "30 2 * * *"   # 04:30 Praha v létě (UTC+2)
+    - cron: "30 3 * * *"   # 04:30 Praha v zimě (UTC+1) – guard níže pustí jen jeden z nich
+    - cron: "15 * * * *"   # hodinová lehká aktualizace (hráči/zápasy, model beze změny)
   workflow_dispatch:
+    inputs:
+      mode: { description: "full | light", default: "full" }
   push:
     branches: [main]
 permissions:
@@ -14,33 +18,62 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Rozhodnout režim
+        id: m
+        run: |
+          H=$(TZ=Europe/Prague date +%H)
+          S="${{ github.event.schedule }}"
+          MODE=full; RUN=1
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "$S" = "15 * * * *" ]; then MODE=light
+              [ "$H" = "04" ] && RUN=0   # v hodině plného retrainu lehkou přeskočit
+            else
+              [ "$H" = "04" ] || RUN=0   # plný retrain jen v 04:xx pražského času
+            fi
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then MODE="${{ github.event.inputs.mode }}"; fi
+          echo "mode=$MODE" >> $GITHUB_OUTPUT; echo "run=$RUN" >> $GITHUB_OUTPUT
+          echo "Praha $H h, režim $MODE, běh $RUN"
       - uses: actions/checkout@v4
+        if: steps.m.outputs.run == '1'
       - uses: actions/setup-python@v5
+        if: steps.m.outputs.run == '1'
         with: { python-version: "3.12" }
       - uses: actions/setup-node@v4
+        if: steps.m.outputs.run == '1'
         with: { node-version: "20" }
-      - run: pip install numpy "scikit-learn>=1.5"
+      - if: steps.m.outputs.run == '1'
+        run: pip install numpy "scikit-learn>=1.5"
       - name: Stáhnout nové výsledky (failover Sackmann → TML → Sofascore → ESPN)
-        if: github.event_name != 'push'
+        if: steps.m.outputs.run == '1' && github.event_name != 'push'
         run: python3 fetch_recent.py
-      - name: Přetrénovat model
+      - name: Plný retrain
+        if: steps.m.outputs.run == '1' && steps.m.outputs.mode == 'full'
         run: python3 build.py
+      - name: Lehká aktualizace
+        if: steps.m.outputs.run == '1' && steps.m.outputs.mode == 'light'
+        run: python3 build.py --light
       - name: Testy
+        if: steps.m.outputs.run == '1'
         run: |
           node --test tests/
           python3 -m unittest discover -s tests
       - name: Uložit data zpět do repa
-        if: github.event_name != 'push'
+        if: steps.m.outputs.run == '1' && github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git add data/recent.csv data/recent_sources.json web/data
-          git diff --cached --quiet || git commit -m "Noční aktualizace dat a modelu [skip ci]" && git push
+          git diff --cached --quiet || (git commit -m "Aktualizace dat (${{ steps.m.outputs.mode }}) [skip ci]" && git push)
       - uses: actions/configure-pages@v5
+        if: steps.m.outputs.run == '1'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.m.outputs.run == '1'
         with: { path: web }
+    outputs:
+      run: ${{ steps.m.outputs.run }}
   deploy:
     needs: build
+    if: needs.build.outputs.run == '1'
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
     steps:

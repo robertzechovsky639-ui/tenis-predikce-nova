@@ -1,0 +1,246 @@
+{
+ "matches": 7665,
+ "step": 6,
+ "results": {
+  "muži|0 před zápasem": {
+   "n": 3975,
+   "brier": 0.1634,
+   "logloss": 0.4957
+  },
+  "muži|1 začátek setu 0:0|bayes": {
+   "n": 3975,
+   "brier": 0.1634,
+   "logloss": 0.4958
+  },
+  "muži|1 začátek setu 0:0|statický": {
+   "n": 3975,
+   "brier": 0.1634,
+   "logloss": 0.4958
+  },
+  "muži|1 začátek setu 0:1|bayes": {
+   "n": 1996,
+   "brier": 0.1479,
+   "logloss": 0.4568
+  },
+  "muži|1 začátek setu 0:1|statický": {
+   "n": 1996,
+   "brier": 0.1413,
+   "logloss": 0.4373
+  },
+  "muži|1 začátek setu 0:2|bayes": {
+   "n": 1284,
+   "brier": 0.0558,
+   "logloss": 0.214
+  },
+  "muži|1 začátek setu 0:2|statický": {
+   "n": 1284,
+   "brier": 0.0542,
+   "logloss": 0.198
+  },
+  "muži|1 začátek setu 1:0|bayes": {
+   "n": 1979,
+   "brier": 0.1362,
+   "logloss": 0.4277
+  },
+  "muži|1 začátek setu 1:0|statický": {
+   "n": 1979,
+   "brier": 0.1298,
+   "logloss": 0.4058
+  },
+  "muži|1 začátek setu 1:1|bayes": {
+   "n": 1371,
+   "brier": 0.207,
+   "logloss": 0.5994
+  },
+  "muži|1 začátek setu 1:1|statický": {
+   "n": 1371,
+   "brier": 0.2051,
+   "logloss": 0.5997
+  },
+  "muži|1 začátek setu 1:2|bayes": {
+   "n": 984,
+   "brier": 0.1625,
+   "logloss": 0.5042
+  },
+  "muži|1 začátek setu 1:2|statický": {
+   "n": 984,
+   "brier": 0.1568,
+   "logloss": 0.4845
+  },
+  "muži|1 začátek setu 2:0|bayes": {
+   "n": 1320,
+   "brier": 0.0548,
+   "logloss": 0.2156
+  },
+  "muži|1 začátek setu 2:0|statický": {
+   "n": 1320,
+   "brier": 0.0518,
+   "logloss": 0.1953
+  },
+  "muži|1 začátek setu 2:1|bayes": {
+   "n": 1013,
+   "brier": 0.1435,
+   "logloss": 0.4488
+  },
+  "muži|1 začátek setu 2:1|statický": {
+   "n": 1013,
+   "brier": 0.1462,
+   "logloss": 0.457
+  },
+  "muži|1 začátek setu 2:2|bayes": {
+   "n": 720,
+   "brier": 0.2389,
+   "logloss": 0.6699
+  },
+  "muži|1 začátek setu 2:2|statický": {
+   "n": 720,
+   "brier": 0.2391,
+   "logloss": 0.6711
+  },
+  "muži|2 v setu|bayes": {
+   "n": 113537,
+   "brier": 0.134,
+   "logloss": 0.4163
+  },
+  "muži|2 v setu|statický": {
+   "n": 113537,
+   "brier": 0.1312,
+   "logloss": 0.4061
+  },
+  "muži|2022+ všechny body|bayes": {
+   "n": 28556,
+   "brier": 0.1473,
+   "logloss": 0.4479
+  },
+  "muži|2022+ všechny body|statický": {
+   "n": 28556,
+   "brier": 0.1449,
+   "logloss": 0.442
+  },
+  "muži|3 konec setu (8+ gemů)|bayes": {
+   "n": 26477,
+   "brier": 0.1468,
+   "logloss": 0.4477
+  },
+  "muži|3 konec setu (8+ gemů)|statický": {
+   "n": 26477,
+   "brier": 0.144,
+   "logloss": 0.4406
+  },
+  "muži|4 tiebreak|bayes": {
+   "n": 4882,
+   "brier": 0.1628,
+   "logloss": 0.4894
+  },
+  "muži|4 tiebreak|statický": {
+   "n": 4882,
+   "brier": 0.1593,
+   "logloss": 0.4834
+  },
+  "muži|všechny body|bayes": {
+   "n": 159538,
+   "brier": 0.138,
+   "logloss": 0.4266
+  },
+  "muži|všechny body|statický": {
+   "n": 159538,
+   "brier": 0.1352,
+   "logloss": 0.4171
+  },
+  "ženy|0 před zápasem": {
+   "n": 3690,
+   "brier": 0.189,
+   "logloss": 0.562
+  },
+  "ženy|1 začátek setu 0:0|bayes": {
+   "n": 3690,
+   "brier": 0.189,
+   "logloss": 0.5623
+  },
+  "ženy|1 začátek setu 0:0|statický": {
+   "n": 3690,
+   "brier": 0.189,
+   "logloss": 0.5623
+  },
+  "ženy|1 začátek setu 0:1|bayes": {
+   "n": 1815,
+   "brier": 0.1195,
+   "logloss": 0.3911
+  },
+  "ženy|1 začátek setu 0:1|statický": {
+   "n": 1815,
+   "brier": 0.1242,
+   "logloss": 0.3966
+  },
+  "ženy|1 začátek setu 1:0|bayes": {
+   "n": 1875,
+   "brier": 0.1247,
+   "logloss": 0.4066
+  },
+  "ženy|1 začátek setu 1:0|statický": {
+   "n": 1875,
+   "brier": 0.1286,
+   "logloss": 0.4129
+  },
+  "ženy|1 začátek setu 1:1|bayes": {
+   "n": 1131,
+   "brier": 0.2357,
+   "logloss": 0.665
+  },
+  "ženy|1 začátek setu 1:1|statický": {
+   "n": 1131,
+   "brier": 0.2349,
+   "logloss": 0.666
+  },
+  "ženy|2 v setu|bayes": {
+   "n": 68241,
+   "brier": 0.1461,
+   "logloss": 0.4501
+  },
+  "ženy|2 v setu|statický": {
+   "n": 68241,
+   "brier": 0.1475,
+   "logloss": 0.4519
+  },
+  "ženy|2022+ všechny body|bayes": {
+   "n": 17498,
+   "brier": 0.1589,
+   "logloss": 0.4826
+  },
+  "ženy|2022+ všechny body|statický": {
+   "n": 17498,
+   "brier": 0.1596,
+   "logloss": 0.4809
+  },
+  "ženy|3 konec setu (8+ gemů)|bayes": {
+   "n": 13059,
+   "brier": 0.1617,
+   "logloss": 0.4881
+  },
+  "ženy|3 konec setu (8+ gemů)|statický": {
+   "n": 13059,
+   "brier": 0.1628,
+   "logloss": 0.4914
+  },
+  "ženy|4 tiebreak|bayes": {
+   "n": 1557,
+   "brier": 0.1744,
+   "logloss": 0.521
+  },
+  "ženy|4 tiebreak|statický": {
+   "n": 1557,
+   "brier": 0.1796,
+   "logloss": 0.5339
+  },
+  "ženy|všechny body|bayes": {
+   "n": 91368,
+   "brier": 0.1507,
+   "logloss": 0.4619
+  },
+  "ženy|všechny body|statický": {
+   "n": 91368,
+   "brier": 0.1521,
+   "logloss": 0.4642
+  }
+ }
+}

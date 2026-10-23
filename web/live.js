@@ -7,11 +7,13 @@ const SLAM=/australian open|roland garros|french open|wimbledon|us open/i;
 async function j(u,ms=9000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{const r=await fetch(u,{signal:c.signal});if(!r.ok)throw new Error(r.status);return await r.json()}finally{clearTimeout(t)}}
 function fromSofa(e){const slug=e.tournament&&e.tournament.category&&e.tournament.category.slug;const c=CATS[slug];if(!c)return null;
  if((e.homeTeam.type===2)||/\//.test(e.homeTeam.name))return null; // čtyřhra
- const st=e.status.type==="inprogress"?"live":e.status.type==="notstarted"?"upcoming":e.status.type==="finished"?"finished":null;if(!st)return null;
+ const ty=e.status.type,ds=e.status.description||"";const susp=ty==="interrupted"||ty==="suspended"||/interrupt|suspend|delay/i.test(ds)&&ty!=="finished";
+ const st=ty==="inprogress"||susp?"live":ty==="notstarted"?"upcoming":ty==="finished"?"finished":null;if(!st)return null;
+ const ret=ty==="finished"&&/retir|walkover|default|w\/o/i.test(ds);const ch=e.changes&&e.changes.changeTimestamp||0;const stale=st==="live"&&!susp&&ch>0&&(Date.now()/1000-ch)>15*60;
  const sets=[];for(let i=1;i<=5;i++){if(e.homeScore["period"+i]==null)break;sets.push([e.homeScore["period"+i],e.awayScore["period"+i]])}
- const bo=c[1]==="atp"&&c[0]==="ATP"&&SLAM.test(e.tournament.name)?5:3;
+ const slam=(c[0]==="ATP"||c[0]==="WTA")&&SLAM.test(e.tournament.name+" "+((e.tournament.uniqueTournament||{}).name||""))&&!/qualif|junior|boys|girls|wheelchair/i.test(e.tournament.name);const bo=slam&&c[1]==="atp"?5:3;
  return {id:"s"+e.id,sid:e.id,src:"Sofascore",cat:c[0],tour:c[1],tourney:e.tournament.name,surface:TM.surfaceOf(e.groundType),home:e.homeTeam.name,away:e.awayTeam.name,
-  status:st,start:e.startTimestamp,sets,point:[e.homeScore.point,e.awayScore.point],winner:e.winnerCode||null,desc:e.status.description,bo,ev:{...e,bo},rank:e.changes&&e.changes.changeTimestamp||0}}
+  status:st,start:e.startTimestamp,sets,point:[e.homeScore.point,e.awayScore.point],winner:e.winnerCode||null,desc:susp?"Přerušeno":ret?(/walkover|w\/o/i.test(ds)?"Skreč před zápasem (W/O)":"Skreč"):e.status.description,suspended:susp,retired:ret,stale,bo,slam,ev:{...e,bo,slam},rank:e.changes&&e.changes.changeTimestamp||0}}
 async function sofaLive(){const d=await j(SS+"/sport/tennis/events/live");const now=Date.now()/1000;let ph=0;
  const out=[];for(const e of d.events||[]){if(TM.isPhantom(e,now)){ph++;continue}const m=fromSofa(e);if(m)out.push(m)}return {list:out,phantoms:ph}}
 async function sofaDay(date){const rs=await Promise.allSettled(SCHED_IDS.map(c=>j(`${SS}/category/${c}/scheduled-events/${date}`)));

@@ -18,3 +18,47 @@ test("liveState parses sofascore event",()=>{const s=T.liveState({homeScore:{per
  assert.deepEqual([s.sa,s.sb,s.ga,s.gb,s.pa,s.pb,s.aServes],[1,0,3,2,3,4,false])});
 test("built data + model sanity",()=>{for(const t of ["atp","wta"]){const D=require(`../web/data/${t}.json`);assert.equal(D.coef.length,4);assert.ok(D.metrics.model.brier<D.metrics.raw_overall_elo.brier);let mx=0;D.sample_X.forEach((x,i)=>{mx=Math.max(mx,Math.abs(1/(1+Math.exp(-T.gbRaw(D.gbm,x)))-D.sample_p[i]))});assert.ok(mx<1e-4,"GBM JS != sklearn "+mx);
  const top=D.players.slice().sort((a,b)=>b.e-a.e);assert.ok(T.predict(D.coef,top[0],top[50],"Hard")>.7)}});
+test("TB: rotace podání 0-0, 1-0, 2-1, 6-6",()=>{const A=true;
+ assert.equal(T.tbServer(A,0),true);   // 0-0: podává ten, kdo je na řadě
+ assert.equal(T.tbServer(A,1),false);  // 1-0: soupeř (body 2-3)
+ assert.equal(T.tbServer(A,2),false);  // 1-1 / 2-0
+ assert.equal(T.tbServer(A,3),true);   // 2-1: zase první (body 4-5)
+ assert.equal(T.tbServer(A,4),true);assert.equal(T.tbServer(A,5),false);
+ assert.equal(T.tbServer(A,12),true);  // 6-6 (12 bodů): první hráč (bod 13 = liché pořadí)
+ assert.equal(T.tbServer(false,0),false)});
+test("TB: liveState ukazatel podání podle skóre TB",()=>{const ev=(h,a)=>({homeScore:{period1:6,period2:6,point:String(h)},awayScore:{period1:4,period2:6,point:String(a)},firstToServe:1});
+ // set1 10 gamů, set2 12 -> game #23 (TB) = sudý index 22 -> domácí začíná TB
+ assert.equal(T.liveState(ev(0,0)).serverNow,true);assert.equal(T.liveState(ev(1,0)).serverNow,false);assert.equal(T.liveState(ev(2,1)).serverNow,true);assert.equal(T.liveState(ev(6,6)).serverNow,true);assert.ok(T.liveState(ev(0,0)).tb)});
+test("TB: 10bodový TB – rozhodnutí a podání",()=>{close(T.tbWin(.65,.65,0,0,true,10),.5,1e-9);assert.ok(T.tbWin(.65,.65,9,5,true,10)>.95);
+ // asymetrie: při 9-9 (18 bodů) podává začínající (bod 19), výhra 2 bodů za sebou
+ const p=T.tbWin(.7,.6,9,9,true,10);close(p,.7*.4/(.7*.4+.3*.6),1e-9);
+ const st={sa:1,sb:1,ga:6,gb:6,pa:0,pb:0,aServes:true,bo:3};assert.ok(Math.abs(T.inPlay(.65,.65,st).match-.5)<1e-9)});
+test("TB: první podávající dalšího setu = kdo v TB přijímal",()=>{assert.equal(T.nextSetFirstServer(true),false);
+ const d=T.setDist(.9,.6,6,6,true,[0,0],7);close(d[0],0,1e-12);close(d[2],0,1e-12);assert.ok(d[1]>0&&d[3]>0); // A začal TB -> další set podává B
+ const ev={homeScore:{period1:7,period2:0},awayScore:{period1:6,period2:0},firstToServe:1};assert.equal(T.liveState(ev).serverNow,false)}); // 13 gamů -> B podává 1. game 2. setu
+test("TB: model používá správného podávajícího po bodech",()=>{// A silný podavač: při 0-0 (A podává) > při 0-0 kdy začíná B
+ const f=(a,b)=>T.tbWin(.8,.6,a,b,true,7);
+ close(f(0,0),.8*f(1,0)+.2*f(0,1));      // bod 1 podává A (p=.8)
+ close(f(1,0),.4*f(2,0)+.6*f(1,1));      // bod 2 podává B (A vyhraje s 1-.6)
+ close(f(1,1),.4*f(2,1)+.6*f(1,2));      // bod 3 podává B
+ close(f(2,1),.8*f(3,1)+.2*f(2,2))});    // bod 4 podává A
+test("TB typ: 10 bodů jen GS rozhodující set",()=>{
+ assert.equal(T.tbTarget({bo:5,slam:true},2,2),10);assert.equal(T.tbTarget({bo:5,slam:true},1,1),7);assert.equal(T.tbTarget({bo:5,slam:true},2,1),7);
+ assert.equal(T.tbTarget({bo:3,slam:true},1,1),10);   // ženy GS 3. set
+ assert.equal(T.tbTarget({bo:3,slam:false},1,1),7);   // ATP/WTA/Challenger/ITF
+ assert.equal(T.tbTarget({bo:5,slam:false},2,2),7);
+ const ev=(slam,bo)=>({homeScore:{period1:6,period2:4,period3:6,point:"8"},awayScore:{period1:4,period2:6,period3:6,point:"7"},firstToServe:1,slam,bo});
+ assert.equal(T.liveState(ev(true,3)).tbTo,10);assert.equal(T.liveState(ev(false,3)).tbTo,7);
+ // 8:7 v 10bodovém TB není konec, v 7bodovém by po dalším bodu skončil – model musí rozlišit
+ const a=T.inPlay(.65,.65,T.liveState(ev(true,3))).match,b=T.inPlay(.65,.65,T.liveState(ev(false,3))).match;assert.ok(a<b,`${a} ${b}`)});
+test("Saabas příspěvky GBM sedí na raw skóre",()=>{
+ const D=JSON.parse(require("fs").readFileSync(__dirname+"/../web/data/atp.json"));const I=T.nameIndex(D.players);
+ const a=D.players[T.findPlayer(I,"Jannik Sinner")],b=D.players[T.findPlayer(I,"Carlos Alcaraz")];
+ const c={surface:"Hard",date:20261023,bo:3,level:2,h2h:[5,10]};const x=T.gbFeatures(a,b,c);const r=T.gbContrib(D.gbm,x);
+ assert.ok(Math.abs(r.bias+r.c.reduce((s,v)=>s+v,0)-T.gbRaw(D.gbm,x))<1e-9);
+ const e=T.explainGB(D,a,b,c);assert.ok(e.length>=8&&e.every(f=>Number.isFinite(f.v)));
+ const e2=T.explainGB(D,b,a,{...c,h2h:[10,5]});const m=new Map(e2.map(f=>[f.k,f.v]));e.forEach(f=>assert.ok(Math.abs(f.v+m.get(f.k))<1e-9))});
+test("de-vig + value tip přežije stažení k trhu",()=>{const d=T.devig(1.5,2.6);assert.ok(Math.abs(d[0]+d[1]-1)<1e-9&&d[2]>0);
+ assert.equal(T.valueTip(.62,[1.5,2.6]),null);           // model blízko trhu → nic
+ const t=T.valueTip(.85,[1.5,2.6]);assert.ok(t&&t.side===0&&t.ev>.03);
+ assert.equal(T.valueTip(.5,[1.9,1.9]),null);assert.ok(T.valueTip(.35,[1.9,1.9]).side===1)});

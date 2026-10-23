@@ -1,0 +1,182 @@
+{
+ "atp": [
+  {
+   "cv": 0.5966960340738297,
+   "fs": "plus",
+   "k": "xgb",
+   "p": {
+    "learning_rate": 0.03,
+    "max_depth": 4,
+    "n_estimators": 400,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 20,
+    "reg_lambda": 1.0,
+    "tree_method": "hist",
+    "random_state": 0,
+    "verbosity": 0
+   },
+   "test_ll": 0.6195011734962463,
+   "test_brier": 0.21595749258995056,
+   "test_acc": 0.6441549537195749,
+   "main_ll": 0.6045056581497192,
+   "main_brier": 0.2094087302684784,
+   "main_acc": 0.6576751946607341
+  },
+  {
+   "cv": 0.596851259469986,
+   "fs": "plus",
+   "k": "xgb",
+   "p": {
+    "learning_rate": 0.03,
+    "max_depth": 4,
+    "n_estimators": 800,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 20,
+    "reg_lambda": 1.0,
+    "tree_method": "hist",
+    "random_state": 0,
+    "verbosity": 0
+   },
+   "test_ll": 0.6230717897415161,
+   "test_brier": 0.21738207340240479,
+   "test_acc": 0.6401268426465547,
+   "main_ll": 0.6047999858856201,
+   "main_brier": 0.20950117707252502,
+   "main_acc": 0.6589265850945495
+  },
+  {
+   "cv": 0.5971305932520135,
+   "fs": "plus",
+   "k": "lgb",
+   "p": {
+    "learning_rate": 0.03,
+    "num_leaves": 15,
+    "n_estimators": 400,
+    "min_child_samples": 100,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "verbose": -1,
+    "random_state": 0
+   },
+   "test_ll": 0.6256563335719088,
+   "test_brier": 0.21874895460843008,
+   "test_acc": 0.6348131642098046,
+   "main_ll": 0.6058587136749328,
+   "main_brier": 0.20993076889077936,
+   "main_acc": 0.6532258064516129
+  },
+  {
+   "cv": 0.5990549242424106,
+   "fs": "base",
+   "k": "hgb",
+   "p": {
+    "learning_rate": 0.06,
+    "max_leaf_nodes": 15,
+    "min_samples_leaf": 80,
+    "max_iter": 300,
+    "l2_regularization": 1.0,
+    "random_state": 0
+   },
+   "test_ll": 0.6218687094027598,
+   "test_brier": 0.21693148164676165,
+   "test_acc": 0.6448405896468975,
+   "main_ll": 0.6072648332704487,
+   "main_brier": 0.21044163417408598,
+   "main_acc": 0.6601779755283649
+  }
+ ],
+ "wta": [
+  {
+   "cv": 0.6031360775232315,
+   "fs": "plus",
+   "k": "xgb",
+   "p": {
+    "learning_rate": 0.03,
+    "max_depth": 4,
+    "n_estimators": 800,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 20,
+    "reg_lambda": 1.0,
+    "tree_method": "hist",
+    "random_state": 0,
+    "verbosity": 0
+   },
+   "test_ll": 0.6056179404258728,
+   "test_brier": 0.20991110801696777,
+   "test_acc": 0.6661442006269592,
+   "main_ll": 0.6072708368301392,
+   "main_brier": 0.21063955128192902,
+   "main_acc": 0.6649342708651789
+  },
+  {
+   "cv": 0.6032829880714417,
+   "fs": "plus",
+   "k": "xgb",
+   "p": {
+    "learning_rate": 0.03,
+    "max_depth": 6,
+    "n_estimators": 400,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 20,
+    "reg_lambda": 1.0,
+    "tree_method": "hist",
+    "random_state": 0,
+    "verbosity": 0
+   },
+   "test_ll": 0.6066080927848816,
+   "test_brier": 0.21043755114078522,
+   "test_acc": 0.6589602925809822,
+   "main_ll": 0.6086917519569397,
+   "main_brier": 0.2113586664199829,
+   "main_acc": 0.655915622133904
+  },
+  {
+   "cv": 0.6033390593250813,
+   "fs": "plus",
+   "k": "lgb",
+   "p": {
+    "learning_rate": 0.03,
+    "num_leaves": 15,
+    "n_estimators": 400,
+    "min_child_samples": 100,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "verbose": -1,
+    "random_state": 0
+   },
+   "test_ll": 0.6057410340340371,
+   "test_brier": 0.21004769242672813,
+   "test_acc": 0.6664054336468129,
+   "main_ll": 0.6079771387516067,
+   "main_brier": 0.2110585976213272,
+   "main_acc": 0.666004280036686
+  },
+  {
+   "cv": 0.6058347049935809,
+   "fs": "base",
+   "k": "hgb",
+   "p": {
+    "learning_rate": 0.06,
+    "max_leaf_nodes": 15,
+    "min_samples_leaf": 80,
+    "max_iter": 300,
+    "l2_regularization": 1.0,
+    "random_state": 0
+   },
+   "test_ll": 0.6082387911732117,
+   "test_brier": 0.21062365299144067,
+   "test_acc": 0.6594827586206896,
+   "main_ll": 0.6097418502752242,
+   "main_brier": 0.2114130518395361,
+   "main_acc": 0.6568327728523388
+  }
+ ]
+}
