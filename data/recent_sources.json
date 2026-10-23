@@ -16,9 +16,9 @@
   {
    "source": "sofascore",
    "ok": true,
-   "rows": 617,
+   "rows": 619,
    "from": "20261013",
-   "to": "20261022"
+   "to": "20261023"
   },
   {
    "source": "espn",
@@ -27,6 +27,6 @@
    "note": "nebylo potřeba"
   }
  ],
- "rows": 5921,
+ "rows": 5923,
  "dupes_removed": 273
 }
