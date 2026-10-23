@@ -81,9 +81,9 @@ function merged(){const now=Date.now();const order=LSRC.map(x=>ST[x[0]]);const f
  return {list,phantoms:prim.phantoms,source:lab(prim),lat:prim.lat,errs,status:status()}}
 // getLive({throttle,onUpdate}): throttle = respektuj intervaly; onUpdate po každém zdroji (první odpověď se vykreslí hned)
 function getLive(o={}){const now=Date.now();const pOk=ST[LSRC[0][0]].state!=="down";const ps=[];
- for(const [n,,fn,iv] of LSRC){const s=ST[n];const ivx=n===LSRC[0][0]||!pOk?Math.min(iv,5000):iv;if(o.throttle&&(s.busy||now-s.at<ivx-300))continue;
+ for(const [n,,fn,iv] of LSRC){const s=ST[n];const ivx=Math.min(60000,(n===LSRC[0][0]||!pOk?Math.min(iv,5000):iv)*(o.mult||1));if(o.throttle&&(s.busy||now-s.at<ivx-150))continue;
   ps.push(fetchSrc(n,fn).then(()=>{if(o.onUpdate)o.onUpdate(merged())}))}
- return Promise.all(ps).then(merged)}
+ return Promise.all(ps).then(()=>({...merged(),fetched:ps.length}))}
 const resetLive=()=>{for(const s of Object.values(ST))Object.assign(s,blank())};
 const getDay=date=>chain([["sofascore","Sofascore",()=>sofaDay(date)],["thescore","theScore (záloha)",()=>scoreLive(date)],["365scores","365scores (záloha)",()=>s365Live(date)]]);
 const oddsCache=new Map();

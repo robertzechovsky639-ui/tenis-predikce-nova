@@ -52,7 +52,7 @@ function updLine(){const el=$("#upd");if(!el)return;const nl=S.list.filter(m=>m.
  ${st.length&&S.day==="live"?`<div class="chips">${st.map(s=>`<span class="chip c-${s.color}" title="${esc(s.label)}: ${s.state}${s.err?" – "+esc(s.err):""}">${esc(s.label)}</span>`).join("")}<button class="chip c-det" data-srcdet="1" aria-expanded="${!!S.srcDet}">detail</button></div>`:""}
  ${S.srcDet&&st.length?`<div class="srcdet">${st.map(s=>`<div><span class="chip c-${s.color}">${esc(s.label)}</span> ${s.lastOk?"OK před "+Math.round(s.age/1000)+" s":"zatím bez dat"} · ${s.lat??"–"} ms · ${s.n} zápasů${s.err?` · <span style="color:#ff5d6c">${esc(s.err)}</span>`:""}${s.busy?" · načítá…":""}</div>`).join("")}</div>`:""}`}
 async function refresh(){const t0=performance.now();
- if(S.day==="live"){try{const r=await LIVE.getLive({throttle:true,onUpdate:r=>applyLive(r,t0)});applyLive(r,t0)}catch(e){FAILS++;S.errs=["chyba: "+e.message];S.loaded=true;render(true)}return}
+ if(S.day==="live"){try{const r=await LIVE.getLive({throttle:true,mult:2**Math.min(FAILS,4),onUpdate:r=>applyLive(r,t0)});if(r.fetched===0)return;}catch(e){FAILS++;S.errs=["chyba: "+e.message];S.loaded=true;render(true)}return}
  if(loading)return;loading=true;try{const r=await LIVE.getDay(dstr(S.day==="today"?0:1));if(S.day==="live")return;S.list=TM.dedupe(r.list).sort((a,b)=>a.start-b.start);S.src=r.source;S.errs=r.errs;S.phantoms=r.phantoms||0;S.status=null;after(t0)}
  catch(e){FAILS++;S.errs=["chyba: "+e.message];S.loaded=true;render(true)}finally{loading=false}}
 const OD=new Map();
@@ -271,8 +271,9 @@ document.addEventListener("input",e=>{const id=e.target.id;
  if(id==="surf"){S.surf=e.target.value;render()}if(id==="bo"||id==="lvl"){S[id]=+e.target.value;render()}if(id==="tour"){S.tour=e.target.value;S.p1=S.p2="";S.player=null;render()}
  if(id==="psearch"&&getP(S.tour,e.target.value)){S.player=e.target.value;render()}});
 // start: živé skóre hned (snapshot z localStorage, pak paralelně živý seznam a data modelu)
-function poll(){const live=S.day==="live"&&/zapasy|oblibene|tipy/.test(S.view);const iv=document.hidden?60000:live?Math.min(60000,4000*2**Math.min(FAILS,4)):30000;
- setTimeout(async()=>{if(!document.hidden&&(live||S.day!=="live"&&S.view==="zapasy"))await refresh();poll()},iv)}
+// live: tik 250 ms, skutečné intervaly hlídá LIVE.getLive (Sofascore 5 s, zálohy 15 s; backoff 2^FAILS)
+function poll(){const live=S.day==="live"&&/zapasy|oblibene|tipy/.test(S.view);const iv=document.hidden?60000:live?250:30000;
+ setTimeout(async()=>{if(!document.hidden){if(live)refresh();else if(S.day!=="live"&&S.view==="zapasy")await refresh()}poll()},iv)}
 (async()=>{const h=location.hash.slice(1);if(VIEWS[h])S.view=h;
  try{const sn=JSON.parse(localStorage.getItem("tpn-live"));if(sn&&Date.now()-sn.t<6*3600e3&&S.day==="live"){S.list=sn.list;S.src=sn.src+" (uloženo "+new Date(sn.t).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})+")";S.loaded=true;S.snap=true}}catch(e){}
  render();updLine();refresh();poll();setInterval(updLine,30000);addEventListener("focus",()=>{if(S.day==="live")refresh()});
