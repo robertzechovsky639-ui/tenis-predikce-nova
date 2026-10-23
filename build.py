@@ -93,12 +93,16 @@ def load(tour):
             if r.get("level")=="C": r["tourney_level"]="C"
             rows.append(r)
     rows.sort(key=lambda r:(int(r["tourney_date"]),r["tourney_id"],int(fnum(r.get("match_num")) if not math.isnan(fnum(r.get("match_num"))) else 0)))
+    if os.environ.get('MAXDATE'): rows=[r for r in rows if int(r['tourney_date'])<=int(os.environ['MAXDATE'])]
     return rows,last_sack,dict(added)
+OUTD=os.environ.get('OUT','web/data'); os.makedirs(OUTD,exist_ok=True)
+SEED=os.environ.get('SEED','0')=='1'; UNR=float(os.environ.get('UNR','1450'))
 def build(tour):
+    SEEDED=set()
     rows,last_sack,added=load(tour); MAXD=max(int(r["tourney_date"]) for r in rows)
     E=defaultdict(lambda:1500.); N=defaultdict(int); ES={s:defaultdict(lambda:1500.) for s in SURF}; NS={s:defaultdict(int) for s in SURF}
     F=defaultdict(lambda:deque(maxlen=FORM_N)); SPW={}; RPW={}; H2H=defaultdict(int); LAST={}; RANK={}; BY={}; NAME={}; META={}
-    SV=defaultdict(lambda:[0,0,0,0,0,0,0]); MAIN=[]; XE=[]; FSU=defaultdict(lambda:deque(maxlen=10)); EH=defaultdict(lambda:deque(maxlen=11)); RD=defaultdict(lambda:deque(maxlen=20)); X=[]; Y=[]; D=[]; LRX=[]; REF=[]; H=[]
+    SV=defaultdict(lambda:[0,0,0,0,0,0,0]); MAIN=[]; CHL=[]; XE=[]; FSU=defaultdict(lambda:deque(maxlen=10)); EH=defaultdict(lambda:deque(maxlen=11)); RD=defaultdict(lambda:deque(maxlen=20)); X=[]; Y=[]; D=[]; LRX=[]; REF=[]; H=[]
     rng=np.random.default_rng(0)
     for r in rows:
         w,l=norm(r["winner_name"]),norm(r["loser_name"]); NAME[w]=r["winner_name"]; NAME[l]=r["loser_name"]
@@ -112,6 +116,12 @@ def build(tour):
             m=META.setdefault(p,{})
             for kk in ("ioc","hand","ht"):
                 if r.get(pre+kk): m[kk]=r[pre+kk]
+        if SEED and not walk:
+            for p in (w,l):
+                if N[p]==0 and p not in SEEDED:
+                    rk=RANK.get(p); SEEDED.add(p)
+                    E[p]=min(1900.,max(1350.,2286-107.4*math.log(rk))) if rk and rk>0 else UNR
+                if NS[s][p]==0 and (s,p) not in SEEDED: SEEDED.add((s,p)); ES[s][p]=E[p]
         if not walk and d>=19950101:
             def side(a,b):
                 ra,rb=RANK.get(a,np.nan),RANK.get(b,np.nan); aa=d/10000-BY[a] if a in BY else np.nan; ab=d/10000-BY[b] if b in BY else np.nan
@@ -126,7 +136,7 @@ def build(tour):
                 return [fs(a)-fs(b),mom(a)-mom(b),fat(a),fat(b)]
             if rng.random()<.5: X.append(side(w,l)+extra(w,l)); XE.append(extra(w,l)); Y.append(1)
             else: X.append(side(l,w)+extra(l,w)); XE.append(extra(l,w)); Y.append(0)
-            D.append(d); MAIN.append(r.get('tourney_level','')!='C' and r['_src']=='sackmann'); REF.append((d,w,l,s,r["tourney_name"],sc))
+            D.append(d); MAIN.append(r.get('tourney_level','')!='C' and r['_src']=='sackmann'); CHL.append(r.get('tourney_level','')=='C'); REF.append((d,w,l,s,r["tourney_name"],sc))
         if not walk:
             pw=ep(E[w],E[l]); E[w]+=k(N[w])*(1-pw); E[l]-=k(N[l])*(1-pw); N[w]+=1; N[l]+=1
             pw=ep(ES[s][w],ES[s][l]); ES[s][w]+=k(NS[s][w])*(1-pw); ES[s][l]-=k(NS[s][l])*(1-pw); NS[s][w]+=1; NS[s][l]+=1
@@ -147,7 +157,7 @@ def build(tour):
     te=D>=TEST_FROM
     if not LIGHT:
         te=D>=TEST_FROM; lr_tr=(D>=20100101)&~te; lr_tr_all=(D>=19950101)&~te
-        res={}; MAIN=np.array(MAIN); tm=MAIN[te]
+        res={}; MAIN=np.array(MAIN); CH=np.array(CHL); tm=MAIN[te]
         w_lr=fit_lr(X[lr_tr][:,:3],Y[lr_tr]); p_lr=lr_pred(w_lr,X[te][:,:3]); res["lr_2010"]=metrics(p_lr,Y[te])
         w_all=fit_lr(np.nan_to_num(X[lr_tr_all][:,:3]),Y[lr_tr_all]); res["lr_1995"]=metrics(lr_pred(w_all,X[te][:,:3]),Y[te])
         res["elo_only"]=metrics(1/(1+np.exp(-X[te][:,0])),Y[te])
@@ -160,6 +170,8 @@ def build(tour):
         raw_cal=clf.predict_proba(X[gcal])[:,1]; iso=IsotonicRegression(out_of_bounds="clip",y_min=0.01,y_max=0.99).fit(raw_cal,Y[gcal])
         p_raw=clf.predict_proba(X[te])[:,1]; p_gb=iso.predict(p_raw)
         res["gbm_raw"]=metrics(p_raw,Y[te]); res["gbm_iso"]=metrics(p_gb,Y[te])
+        tc=CH[te]
+        if tc.sum(): res["cmp_gbm_ch"]=metrics(p_gb[tc],Y[te][tc]); res["cmp_elo_ch"]=metrics(1/(1+np.exp(-X[te][tc][:,0])),Y[te][tc])
         res["cmp_lr_main"]=metrics(p_lr[tm],Y[te][tm]); res["cmp_gbm_main"]=metrics(p_gb[tm],Y[te][tm]); res["cmp_elo_main"]=metrics(1/(1+np.exp(-X[te][tm][:,0])),Y[te][tm])
         best="gbm" if res["gbm_iso"]["logloss"]<res["lr_2010"]["logloss"] else "lr"
         pt=p_gb if best=="gbm" else p_lr
@@ -201,7 +213,7 @@ def build(tour):
     if LIGHT:
         for k_ in ("best","coef","features","gbm","gbm_kind","iso","shipped","metrics","backtest","sample_X","sample_p","sample_margin"): out[k_]=prev.get(k_)
         out["light_update"]=dt.datetime.now().isoformat(timespec="minutes")
-    out=json.loads(json.dumps(out).replace("NaN","null").replace("-Infinity","-1e300").replace("Infinity","1e300")); mt=out.pop("matches"); out["matches_file"]=f"{tour}_m.json"; json.dump({"matches":mt},open(f"web/data/{tour}_m.json","w"),separators=(",",":"),allow_nan=False); json.dump(out,open(f"web/data/{tour}.json","w"),ensure_ascii=False,separators=(",",":"),allow_nan=False)
+    out=json.loads(json.dumps(out).replace("NaN","null").replace("-Infinity","-1e300").replace("Infinity","1e300")); mt=out.pop("matches"); out["matches_file"]=f"{tour}_m.json"; json.dump({"matches":mt},open(f"{OUTD}/{tour}_m.json","w"),separators=(",",":"),allow_nan=False); json.dump(out,open(f"{OUTD}/{tour}.json","w"),ensure_ascii=False,separators=(",",":"),allow_nan=False)
     return out
 if __name__=="__main__":
     for t in ("atp","wta"): build(t)

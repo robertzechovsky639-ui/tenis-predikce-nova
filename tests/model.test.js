@@ -67,3 +67,10 @@ test("pbpSeries: průběh z point-by-point",()=>{const G=[];// A drží, B drž�
  G.push(hold(1,1,0));G.push(hold(2,1,1));G.push({set:1,game:3,h:2,a:1,serving:1,scoring:1,points:[["15","0"]]});G[2].serving=2;G[2].points=[["15","0"],["30","0"],["40","0"],["0","0"]];
  const s=T.pbpSeries(.64,.64,G,3,false);assert.ok(s.length>10);assert.ok(Math.abs(s[0].p-.5)<.02);const b=s.find(x=>x.ev==="break");assert.ok(b&&b.p>.6,JSON.stringify(b));
  s.forEach(x=>assert.ok(x.p>=0&&x.p<=1))});
+test("in-play ML korekce + PBP vítězové bodů",()=>{assert.ok(Math.abs(T.inplayML(.5,.5)-.5)<.01);
+ assert.ok(T.inplayML(.6,.6,{mom20:.2,men:true})>T.inplayML(.6,.6,{mom20:-.2,men:true}));
+ assert.ok(T.inplayML(.6,.6,{swA:40,stA:50,swB:25,stB:50})>T.inplayML(.6,.6));assert.equal(T.inplayML(1,.3),1);
+ const w=T.pbpWinners([{set:1,game:1,h:1,a:0,serving:1,scoring:1,points:[["15","0"],["15","15"],["30","15"],["40","15"]]},{set:1,game:2,h:1,a:0,serving:2,scoring:-1,points:[["0","15"],["15","15"]]}]);
+ assert.deepEqual(w,[1,0,1,1,1,0,1])});
+test("rankPrior: Elo z žebříčku, bez žebříčku 1450, monotónní",()=>{const a=TM.rankPrior("X",10),b=TM.rankPrior("Y",500),c=TM.rankPrior("Z",null);
+ assert.ok(a.e>b.e&&b.e>=1350&&a.e<=1900);assert.equal(c.e,1450);assert.ok(a.prior&&a.s.Clay===a.e)});

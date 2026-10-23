@@ -1,0 +1,51 @@
+{
+ "n": {
+  "train": 356048,
+  "val": 57707,
+  "test": 58299,
+  "test_matches": 938
+ },
+ "analytic": {
+  "brier": 0.15315,
+  "logloss": 0.46325,
+  "men": 0.1524,
+  "women": 0.15438
+ },
+ "lr_logit": {
+  "brier": 0.15016,
+  "logloss": 0.45448,
+  "men": 0.1487,
+  "women": 0.15259
+ },
+ "xgb": {
+  "brier": 0.15351,
+  "logloss": 0.46499,
+  "men": 0.15345,
+  "women": 0.1536
+ },
+ "lr_coef": {
+  "bias": 0.01932,
+  "l_ana": 0.98011,
+  "l_pre": -0.14828,
+  "mom20": 0.38123,
+  "mom50": -0.0178,
+  "sw_diff": 3.89445
+ },
+ "by_state": {
+  "tiebreak": {
+   "analytic": 0.18178,
+   "lr_logit": 0.17913,
+   "xgb": 0.18229
+  },
+  "deciding_set": {
+   "analytic": 0.16937,
+   "lr_logit": 0.16687,
+   "xgb": 0.16831
+  },
+  "early(<60 bod\u016f)": {
+   "analytic": 0.17523,
+   "lr_logit": 0.17279,
+   "xgb": 0.17634
+  }
+ }
+}

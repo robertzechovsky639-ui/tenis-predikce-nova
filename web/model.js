@@ -131,5 +131,19 @@ function pbpSeries(pA,pB,games,bo,slam){const need=bo===5?3:2;let sa=0,sb=0,cur=
    const setEnd=(ga>=6&&ga-gb>=2)||(gb>=6&&gb-ga>=2)||ga===7||gb===7;if(setEnd){ga>gb?sa2++:sb2++;ga2=gb2=0}
    const p=sa2>=need?1:sb2>=need?0:P({sa:sa2,sb:sb2,ga:ga2,gb:gb2,pa:0,pb:0,aServes:!aS});out.push({p,set:cur,g:`${ga}:${gb}`,ev:setEnd?"set":brk?"break":"game",who:g.scoring})}});
  return out}
-const api={pbpSeries,devig,valueTip,gbContrib,explainGB,tbTarget,tbServer,nextSetFirstServer,ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
+// ML korekce in-play (LR na logitech; trénink Sackmann slam PBP 2011–2022, test 2023–24: Brier 0.1532 → 0.1502)
+const IPML={bias:0.01932,l_ana:0.98011,l_pre:-0.14828,mom20:0.38123,mom50:-0.0178,sw_diff:3.89445};
+function inplayML(ana,pre,f={}){if(ana<=0||ana>=1)return ana;const L=p=>{p=Math.min(1-1e-4,Math.max(1e-4,p));return Math.log(p/(1-p))};const avg=f.men?.64:.565;
+ const sr=(w,t)=>(w+.64*30)/(t+30)-avg;const sw=(f.stA||f.stB)?sr(f.swA||0,f.stA||0)-sr(f.swB||0,f.stB||0):0;
+ const z=IPML.bias+IPML.l_ana*L(ana)+IPML.l_pre*L(pre)+IPML.mom20*(f.mom20||0)+IPML.mom50*(f.mom50||0)+IPML.sw_diff*sw;return 1/(1+Math.exp(-z))}
+// vítězové bodů z point-by-point (1 = domácí), pro momentum
+function pbpWinners(games){const out=[];const v=(x,tb)=>tb?(parseInt(x,10)||0):ptNum(x);let ga=0,gb=0,cur=null;
+ for(const g of games){if(g.set!==cur){cur=g.set;ga=gb=0}const tb=ga===6&&gb===6;let ph=0,pa=0;
+  for(const [h,a] of g.points){const hv=v(h,tb),av=v(a,tb);if(hv>ph)out.push(1);else if(av>pa)out.push(0);else if(ph===4&&!tb)out.push(0);else if(pa===4&&!tb)out.push(1);ph=hv;pa=av}
+  if(g.scoring===1||g.scoring===2){const lp=g.points[g.points.length-1];if(!lp||!(lp[0]==="0"&&lp[1]==="0"))out.push(g.scoring===1?1:0);ga=g.h;gb=g.a}}
+ return out}
+function momentum(w,k){const h=w.slice(-k);return h.length?h.reduce((s,x)=>s+x,0)/h.length-.5:0}
+// prior pro neznámého hráče z žebříčku (Sofascore): Elo ≈ 2286 − 107,4·ln(rank) (fit na aktivních hráčích, rozptyl ±100)
+function rankPrior(name,rank){const e=!(rank>0)?1450:Math.min(1900,Math.max(1350,2286-107.4*Math.log(rank)));return {n:name,e,s:{Hard:e,Clay:e,Grass:e},m:0,f:[],rank,prior:true}}
+const api={rankPrior,inplayML,pbpWinners,momentum,pbpSeries,devig,valueTip,gbContrib,explainGB,tbTarget,tbServer,nextSetFirstServer,ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
 if(typeof module!=="undefined")module.exports=api;root.TM=api})(typeof globalThis!=="undefined"?globalThis:this);

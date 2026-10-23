@@ -1,0 +1,162 @@
+{
+ "all": {
+  "model": {
+   "n": 775,
+   "brier": 0.2267,
+   "logloss": 0.6491,
+   "acc": 61.8
+  },
+  "market": {
+   "n": 775,
+   "brier": 0.2051,
+   "logloss": 0.5923,
+   "acc": 65.8
+  },
+  "blend_w0.3": {
+   "n": 775,
+   "brier": 0.2162,
+   "logloss": 0.6224,
+   "acc": 64.1
+  },
+  "blend_w0.5": {
+   "n": 775,
+   "brier": 0.211,
+   "logloss": 0.6093,
+   "acc": 65
+  },
+  "blend_w0.7": {
+   "n": 775,
+   "brier": 0.2075,
+   "logloss": 0.5998,
+   "acc": 65.8
+  }
+ },
+ "known": {
+  "model": {
+   "n": 649,
+   "brier": 0.2312,
+   "logloss": 0.6575,
+   "acc": 60.1
+  },
+  "market": {
+   "n": 649,
+   "brier": 0.2161,
+   "logloss": 0.6202,
+   "acc": 64.1
+  },
+  "blend_w0.3": {
+   "n": 649,
+   "brier": 0.2238,
+   "logloss": 0.6404,
+   "acc": 62.4
+  },
+  "blend_w0.5": {
+   "n": 649,
+   "brier": 0.2203,
+   "logloss": 0.6318,
+   "acc": 63.2
+  },
+  "blend_w0.7": {
+   "n": 649,
+   "brier": 0.2178,
+   "logloss": 0.6256,
+   "acc": 63.9
+  }
+ },
+ "prior": {
+  "model": {
+   "n": 126,
+   "brier": 0.2036,
+   "logloss": 0.6056,
+   "acc": 70.6
+  },
+  "market": {
+   "n": 126,
+   "brier": 0.1482,
+   "logloss": 0.4488,
+   "acc": 74.6
+  },
+  "blend_w0.3": {
+   "n": 126,
+   "brier": 0.177,
+   "logloss": 0.53,
+   "acc": 73
+  },
+  "blend_w0.5": {
+   "n": 126,
+   "brier": 0.1634,
+   "logloss": 0.493,
+   "acc": 74.6
+  },
+  "blend_w0.7": {
+   "n": 126,
+   "brier": 0.154,
+   "logloss": 0.4671,
+   "acc": 75.4
+  }
+ },
+ "challenger": {
+  "model": {
+   "n": 543,
+   "brier": 0.2251,
+   "logloss": 0.6437,
+   "acc": 61.9
+  },
+  "market": {
+   "n": 543,
+   "brier": 0.1999,
+   "logloss": 0.5789,
+   "acc": 66.9
+  },
+  "blend_w0.3": {
+   "n": 543,
+   "brier": 0.2127,
+   "logloss": 0.6133,
+   "acc": 64.5
+  },
+  "blend_w0.5": {
+   "n": 543,
+   "brier": 0.2067,
+   "logloss": 0.5983,
+   "acc": 65.4
+  },
+  "blend_w0.7": {
+   "n": 543,
+   "brier": 0.2026,
+   "logloss": 0.5875,
+   "acc": 66.3
+  }
+ },
+ "main": {
+  "model": {
+   "n": 232,
+   "brier": 0.2306,
+   "logloss": 0.6617,
+   "acc": 61.6
+  },
+  "market": {
+   "n": 232,
+   "brier": 0.2172,
+   "logloss": 0.6236,
+   "acc": 63.4
+  },
+  "blend_w0.3": {
+   "n": 232,
+   "brier": 0.2243,
+   "logloss": 0.6438,
+   "acc": 63.4
+  },
+  "blend_w0.5": {
+   "n": 232,
+   "brier": 0.221,
+   "logloss": 0.6349,
+   "acc": 64.2
+  },
+  "blend_w0.7": {
+   "n": 232,
+   "brier": 0.2187,
+   "logloss": 0.6285,
+   "acc": 64.7
+  }
+ }
+}
