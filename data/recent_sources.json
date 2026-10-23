@@ -16,7 +16,7 @@
   {
    "source": "sofascore",
    "ok": true,
-   "rows": 629,
+   "rows": 631,
    "from": "20261013",
    "to": "20261023"
   },
@@ -27,6 +27,6 @@
    "note": "nebylo potřeba"
   }
  ],
- "rows": 5932,
+ "rows": 5934,
  "dupes_removed": 274
 }
