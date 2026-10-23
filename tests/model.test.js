@@ -74,3 +74,16 @@ test("in-play ML korekce + PBP vítězové bodů",()=>{assert.ok(Math.abs(T.inpl
  assert.deepEqual(w,[1,0,1,1,1,0,1])});
 test("rankPrior: Elo z žebříčku, bez žebříčku 1450, monotónní",()=>{const a=TM.rankPrior("X",10),b=TM.rankPrior("Y",500),c=TM.rankPrior("Z",null);
  assert.ok(a.e>b.e&&b.e>=1350&&a.e<=1900);assert.equal(c.e,1450);assert.ok(a.prior&&a.s.Clay===a.e)});
+test("gamePred: udržení gemu, shoda/výhoda, breakboly",()=>{const st=(pa,pb,aS=true)=>({tb:false,aServes:aS,pa,pb});
+ const g0=TM.gamePred(.65,.6,st(0,0));assert.ok(Math.abs(g0.hold-TM.gameWin(.65))<1e-12&&Math.abs(g0.hold+g0.brk-1)<1e-12);
+ const d=TM.gamePred(.6,.6,st(3,3)),ad=TM.gamePred(.6,.6,st(4,3)),adr=TM.gamePred(.6,.6,st(3,4));assert.ok(Math.abs(d.hold-.36/.52)<1e-9);assert.ok(d.deuce&&!d.bp);
+ assert.ok(Math.abs(ad.hold-(.6+.4*d.hold))<1e-9&&ad.gp);assert.ok(Math.abs(adr.hold-.6*d.hold)<1e-9&&adr.bp&&adr.bpN===1);
+ const b=TM.gamePred(.6,.6,st(3,0,false));assert.ok(b.bp&&b.bpN===3&&!b.srvA);assert.ok(TM.gamePred(.6,.6,st(0,3,false)).bp===false)});
+test("gamePred TB: rotace podání a cíl 7/10",()=>{const g=TM.gamePred(.65,.6,{tb:true,aServes:true,pa:0,pb:0,tbTo:7});assert.ok(g.srvA&&g.T===7);
+ assert.equal(TM.gamePred(.65,.6,{tb:true,aServes:true,pa:1,pb:0,tbTo:7}).srvA,false);assert.equal(TM.gamePred(.65,.6,{tb:true,aServes:true,pa:2,pb:1,tbTo:7}).srvA,true);
+ const s7=TM.gamePred(.65,.6,{tb:true,aServes:true,pa:6,pb:5,tbTo:7}),s10=TM.gamePred(.65,.6,{tb:true,aServes:true,pa:6,pb:5,tbTo:10});assert.equal(s7.sp,"A");assert.equal(s10.sp,null);assert.ok(s7.pTB>s10.pTB);
+ const ls=TM.liveState({homeScore:{period1:6,period2:6,point:"3"},awayScore:{period1:3,period2:6,point:"2"},firstToServe:1,bo:3});const g2=TM.gamePred(.65,.6,ls);
+ assert.ok(g2.tb&&g2.T===7);// odehráno 9+12 gamů → TB začíná B (21 lichý), 5 bodů → podává A
+ assert.equal(ls.aServes,false);assert.equal(g2.srvA,tb5(false));function tb5(aS){return TM.tbServer(aS,5)}
+ const slam=TM.liveState({homeScore:{period1:6,period2:3,period3:6,point:"0"},awayScore:{period1:3,period2:6,period3:6,point:"0"},firstToServe:1,bo:3,slam:true});assert.equal(TM.gamePred(.6,.6,slam).T,10)});
+test("liveServe: shrink k prioru",()=>{assert.equal(TM.liveServe(.64,0,0),.64);assert.ok(Math.abs(TM.liveServe(.6,40,50)-(.6*30+40)/80)<1e-12)});

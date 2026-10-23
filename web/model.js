@@ -145,5 +145,13 @@ function pbpWinners(games){const out=[];const v=(x,tb)=>tb?(parseInt(x,10)||0):p
 function momentum(w,k){const h=w.slice(-k);return h.length?h.reduce((s,x)=>s+x,0)/h.length-.5:0}
 // prior pro neznámého hráče z žebříčku (Sofascore): Elo ≈ 2286 − 107,4·ln(rank) (fit na aktivních hráčích, rozptyl ±100)
 function rankPrior(name,rank){const e=!(rank>0)?1450:Math.min(1900,Math.max(1350,2286-107.4*Math.log(rank)));return {n:name,e,s:{Hard:e,Clay:e,Grass:e},m:0,f:[],rank,prior:true}}
-const api={rankPrior,inplayML,pbpWinners,momentum,pbpSeries,devig,valueTip,gbContrib,explainGB,tbTarget,tbServer,nextSetFirstServer,ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
+// aktuální gem: P(podávající udrží) z bodového stavu (vč. shody/výhody), v TB P(A vyhraje TB) se správnou rotací podání a cílem 7/10
+// st = liveState; pA,pB = P(vyhraje bod na svém podání)
+function gamePred(pA,pB,st){if(!st)return null;if(st.tb){const T=st.tbTo||7,a=st.pa||0,b=st.pb||0;const w=tbWin(pA,pB,a,b,st.aServes,T);const srvA=tbServer(st.aServes,a+b);
+  const mp=(x,y)=>x>=T-1&&x>y;return {tb:true,T,srvA,pTB:w,pt:[a,b],sp:mp(a,b)?"A":mp(b,a)?"B":null}}
+ const srvA=st.aServes;let s=srvA?st.pa:st.pb,r=srvA?st.pb:st.pa;s=s||0;r=r||0;const p=srvA?pA:pB;const hold=gameWin(p,s,r);
+ const bp=r>=3&&r>s,gp=s>=3&&s>r;return {tb:false,srvA,hold,brk:1-hold,bp,bpN:bp?(r>=4?1:r-s):0,gp,deuce:s>=3&&s===r}}
+// živá úprava podání: Beta shrink k prioru (K bodů) podle odehraných bodů na podání v zápase
+function liveServe(prior,won,played,K=30){return played>0?(prior*K+won)/(K+played):prior}
+const api={gamePred,liveServe,rankPrior,inplayML,pbpWinners,momentum,pbpSeries,devig,valueTip,gbContrib,explainGB,tbTarget,tbServer,nextSetFirstServer,ddays,gbFeatures,gbRaw,isoMap,predictGB,predictBest,SURF,ep,lg,form,features,predict,explain,surfaceOf,norm,nameIndex,findPlayer,gameWin,tbWin,setDist,inPlay,simGames,servePrior,calibrateServe,bayes,liveState,isPhantom,dedupe,fracToDec,value,brier,ptNum};
 if(typeof module!=="undefined")module.exports=api;root.TM=api})(typeof globalThis!=="undefined"?globalThis:this);
