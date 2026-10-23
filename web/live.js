@@ -1,4 +1,4 @@
-// Živá data: Sofascore (primární, CORS povolen), záloha ESPN a 365scores. Bez proxy.
+// Živá data: Sofascore (primární, CORS povolen), záloha theScore a 365scores (ESPN jen v nočním doplňování výsledků – v prohlížeči blokuje CORS). Bez proxy.
 (function(root){
 const SS="https://api.sofascore1.com/api/v1";
 const CATS={atp:["ATP","atp"],wta:["WTA","wta"],challenger:["Challenger","atp"],"itf-men":["ITF","atp"],"itf-women":["ITF","wta"],"wta-125":["WTA 125","wta"]};
@@ -18,10 +18,28 @@ async function sofaLive(){const d=await j(SS+"/sport/tennis/events/live",6000);c
  const out=[];for(const e of d.events||[]){if(TM.isPhantom(e,now)){ph++;continue}const m=fromSofa(e);if(m)out.push(m)}return {list:out,phantoms:ph}}
 async function sofaDay(date){const rs=await Promise.allSettled(SCHED_IDS.map(c=>j(`${SS}/category/${c}/scheduled-events/${date}`)));
  const now=Date.now()/1000;let ph=0;const out=[];rs.forEach(r=>{if(r.status==="fulfilled")(r.value.events||[]).forEach(e=>{if(e.status&&e.status.type==="inprogress"&&TM.isPhantom(e,now)){ph++;return}const m=fromSofa(e);if(m)out.push(m)})});if(!out.length&&rs.every(r=>r.status==="rejected"))throw new Error("sofascore day");return {list:out,phantoms:ph}}
-async function espnLive(date){const out=[];for(const t of ["atp","wta"]){const d=await j(`https://site.api.espn.com/apis/site/v2/sports/tennis/${t}/scoreboard`+(date?`?dates=${date.replace(/-/g,"")}`:""));
- for(const ev of d.events||[])for(const g of ev.groupings||[]){if(!/singles/i.test(g.grouping&&g.grouping.displayName||"singles"))continue;for(const c of g.competitions||[]){const s=c.status.type.state;if(!date&&s!=="in"&&s!=="pre")continue;
-  const [h,a]=c.competitors.sort((x,y)=>x.order-y.order);if(!h||!a||!h.athlete)continue;const sets=(h.linescores||[]).map((l,i)=>[l.value,(a.linescores[i]||{}).value||0]);
-  out.push({id:"e"+c.id,src:"ESPN",cat:t.toUpperCase(),tour:t,tourney:ev.name,surface:"Hard",home:h.athlete.displayName,away:a.athlete.displayName,status:s==="in"?"live":s==="post"?"finished":"upcoming",winner:h.winner?1:a.winner?2:null,start:Date.parse(c.date)/1000,sets,point:[],bo:3,rank:1})}}}return out}
+// theScore (api.thescore.com, CORS *, bez klíče): ATP + WTA dvouhra, sety, body, podávající, TB body. Challenger/ITF nepokrývá.
+const TS="https://api.thescore.com",tsEv={};
+async function tsEvents(t){const c=tsEv[t];if(c&&Date.now()-c.t<1800e3)return c.d;const d=await j(`${TS}/${t}/events`,6000);tsEv[t]={t:Date.now(),d};return d}
+const TSURF=g=>/clay/i.test(g||"")?"Clay":/grass/i.test(g||"")?"Grass":"Hard";
+const tsPt=p=>p==null||p===""?null:/^a/i.test(String(p))?"A":String(p);
+function fromScore(x,ev,t){if(x.is_double||!x.team_1||!x.team_2)return null;const nm=s=>s&&s.player1?((s.player1.first_name||"")+" "+(s.player1.last_name||"")).trim():null;
+ const home=nm(x.team_1),away=nm(x.team_2);if(!home||!away)return null;const st=x.status;
+ const status=st==="pre_game"?"upcoming":/final|retired|walkover|cancel/.test(st)?"finished":/postpon|delay|suspend/.test(st)&&!(x.team_1_scores||[]).length?"upcoming":"live";
+ const s1=x.team_1_scores||[],s2=x.team_2_scores||[];const sets=s1.map((v,i)=>[v??0,s2[i]??0]);const slam=SLAM.test(ev.name||"");const bo=x.sets===5||(slam&&t==="atp")?5:3;
+ const tb1=x.team_1_tie_break||[],tb2=x.team_2_tie_break||[];const cur=sets.length?sets[sets.length-1]:[0,0];const inTB=status==="live"&&cur[0]===6&&cur[1]===6;
+ const point=status==="live"?(inTB?[tb1[sets.length-1]??x.team_1_point_score??0,tb2[sets.length-1]??x.team_2_point_score??0].map(v=>String(v??0)):[tsPt(x.team_1_point_score),tsPt(x.team_2_point_score)]):[];
+ const winner=x.winner_id?(x.winner_id===x.team_1.id?1:x.winner_id===x.team_2.id?2:null):null;
+ let ev2=null;if(status==="live"&&sets.length){const hs={},as={};sets.forEach((s,i)=>{hs["period"+(i+1)]=s[0];as["period"+(i+1)]=s[1]});if(point[0]!=null){hs.point=point[0];as.point=point[1]}
+  let fts=null;const srv=x.current_server_id;if(srv&&(srv===x.team_1.id||srv===x.team_2.id)){const home=srv===x.team_1.id;let g=0;sets.forEach(s=>g+=s[0]+s[1]);
+   // liveState: aServes=(games%2===0)===first; v TB je server bodu tbServer(aServes,n)
+   let aS=home;if(inTB){const n=(+point[0]||0)+(+point[1]||0);if(Math.floor((n+1)/2)%2===1)aS=!aS}fts=((g%2===0)===aS)?1:2}
+  ev2={homeScore:hs,awayScore:as,firstToServe:fts,bo,slam}}
+ const tt=ev.tournament_type||"";return {id:"t"+x.id,src:"theScore",cat:/125/.test(tt)?"WTA 125":t.toUpperCase(),tour:t,tourney:ev.name,surface:TSURF(ev.ground_type),home,away,status,winner,start:Date.parse(x.match_date)/1000,sets,point,bo,slam,ev:ev2,rank:Date.parse(x.updated_at)/1000||0}}
+async function scoreLive(date){const out=[];const day=date?Date.parse(date+"T12:00:00Z"):Date.now();
+ await Promise.all(["atp","wta"].map(async t=>{const evs=(await tsEvents(t)).filter(e=>/singles/i.test(e.match_type||"")&&(date?Date.parse(e.start_date)-864e5<=day&&day<=Date.parse(e.end_date)+864e5:e.event_status==="in_progress"));
+  await Promise.all(evs.map(async ev=>{const ms=await j(`${TS}/${t}/events/${ev.id}/matches`,6000);for(const x of ms||[]){const m=fromScore(x,ev,t);if(!m)continue;
+   if(date){const d=new Date(m.start*1000);const ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");if(ds!==date)continue}else if(m.status!=="live")continue;out.push(m)}}))}));return out}
 async function s365Live(date){const q=date?`&startDate=${date.split("-").reverse().join("/")}&endDate=${date.split("-").reverse().join("/")}`:"";
  const d=await j("https://webws.365scores.com/web/games/allscores/?appTypeId=5&langId=1&timezoneName=Europe%2FPrague&userCountryId=1&sports=3"+q);const out=[];
  for(const g of d.games||[]){if(!date&&g.statusGroup!==3&&g.statusGroup!==2)continue;const h=g.homeCompetitor,a=g.awayCompetitor;if(!h||/\//.test(h.name))continue;
@@ -39,8 +57,8 @@ function race(srcs,head=3000){return new Promise(res=>{const errs=[],st=srcs.map
  const run=i=>{const [name,label,fn]=srcs[i];st[i]="run";(async()=>{if(FAIL.has(name))throw new Error("simulovaný výpadek");const r=await fn();const list=r.list||r;if(!list.length)throw new Error("prázdná odpověď");return {list,phantoms:r.phantoms||0,source:label}})()
   .then(r=>{st[i]="ok";rs[i]=r;check()},e=>{st[i]="fail";errs.push(label+": "+e.message);if(i===0)start();check()})};
  const start=()=>{while(started<srcs.length)run(started++)};run(started++);setTimeout(()=>{slow=true;start();check()},head)})}
-const getLive=()=>race([["sofascore","Sofascore",sofaLive],["espn","ESPN (záloha)",()=>espnLive()],["365scores","365scores (záloha)",()=>s365Live()]]);
-const getDay=date=>chain([["sofascore","Sofascore",()=>sofaDay(date)],["espn","ESPN (záloha)",()=>espnLive(date)],["365scores","365scores (záloha)",()=>s365Live(date)]]);
+const getLive=()=>race([["sofascore","Sofascore",sofaLive],["thescore","theScore (záloha)",()=>scoreLive()],["365scores","365scores (záloha)",()=>s365Live()]]);
+const getDay=date=>chain([["sofascore","Sofascore",()=>sofaDay(date)],["thescore","theScore (záloha)",()=>scoreLive(date)],["365scores","365scores (záloha)",()=>s365Live(date)]]);
 const oddsCache=new Map();
 async function odds(sid){if(oddsCache.has(sid))return oddsCache.get(sid);let r=null;try{const d=await j(`${SS}/event/${sid}/odds/1/featured`,6000);const ch=d.featured&&d.featured.default&&d.featured.default.choices;
  if(ch&&ch.length>=2)r=[TM.fracToDec(ch[0].fractionalValue),TM.fracToDec(ch[1].fractionalValue)]}catch(e){}oddsCache.set(sid,r);return r}
@@ -55,4 +73,4 @@ function parsePBP(d){const out=[];for(const s of (d.pointByPoint||[]).slice().so
  out.push({set:s.set,game:g.game,h:g.score.homeScore,a:g.score.awayScore,serving:g.score.serving,scoring:g.score.scoring,points:(g.points||[]).map(p=>[p.homePoint,p.awayPoint])});return out}
 async function pbp(sid){try{return parsePBP(await j(`${SS}/event/${sid}/point-by-point`,7000))}catch(e){return null}}
 const photo=id=>id?`${SS}/team/${id}/image`:"";
-root.LIVE={pbp,parsePBP,parseStats,photo,STATK,getLive,getDay,FAIL,sofaDay,odds,stats,fromSofa}})(globalThis);
+root.LIVE={fromScore,scoreLive,pbp,parsePBP,parseStats,photo,STATK,getLive,getDay,FAIL,sofaDay,odds,stats,fromSofa}})(globalThis);
