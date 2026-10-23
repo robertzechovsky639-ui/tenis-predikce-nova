@@ -31,7 +31,7 @@ function fromScore(x,ev,t){if(x.is_double||!x.team_1||!x.team_2)return null;cons
  const point=status==="live"?(inTB?[tb1[sets.length-1]??x.team_1_point_score??0,tb2[sets.length-1]??x.team_2_point_score??0].map(v=>String(v??0)):[tsPt(x.team_1_point_score),tsPt(x.team_2_point_score)]):[];
  const winner=x.winner_id?(x.winner_id===x.team_1.id?1:x.winner_id===x.team_2.id?2:null):null;
  let ev2=null;if(status==="live"&&sets.length){const hs={},as={};sets.forEach((s,i)=>{hs["period"+(i+1)]=s[0];as["period"+(i+1)]=s[1]});if(point[0]!=null){hs.point=point[0];as.point=point[1]}
-  let fts=null;const srv=x.current_server_id;if(srv&&(srv===x.team_1.id||srv===x.team_2.id)){const home=srv===x.team_1.id;let g=0;sets.forEach(s=>g+=s[0]+s[1]);
+  let fts=null;const srv=x.current_server_id;const p1=x.team_1.player1||{},p2=x.team_2.player1||{};const isH=srv&&(srv===x.team_1.id||srv===p1.id),isA=srv&&(srv===x.team_2.id||srv===p2.id);if(isH||isA){const home=!!isH;let g=0;sets.forEach(s=>g+=s[0]+s[1]);
    // liveState: aServes=(games%2===0)===first; v TB je server bodu tbServer(aServes,n)
    let aS=home;if(inTB){const n=(+point[0]||0)+(+point[1]||0);if(Math.floor((n+1)/2)%2===1)aS=!aS}fts=((g%2===0)===aS)?1:2}
   ev2={homeScore:hs,awayScore:as,firstToServe:fts,bo,slam}}
@@ -57,6 +57,19 @@ function race(srcs,head=3000){return new Promise(res=>{const errs=[],st=srcs.map
  const run=i=>{const [name,label,fn]=srcs[i];st[i]="run";(async()=>{if(FAIL.has(name))throw new Error("simulovaný výpadek");const r=await fn();const list=r.list||r;if(!list.length)throw new Error("prázdná odpověď");return {list,phantoms:r.phantoms||0,source:label}})()
   .then(r=>{st[i]="ok";rs[i]=r;check()},e=>{st[i]="fail";errs.push(label+": "+e.message);if(i===0)start();check()})};
  const start=()=>{while(started<srcs.length)run(started++)};run(started++);setTimeout(()=>{slow=true;start();check()},head)})}
+// podávající: Sofascore event.firstToServe je nespolehlivé (v živých datech se mění, 2/5 špatně) -> první podávající se odvodí
+// z point-by-point (score.serving aktuálního gamu + počet odehraných gamů, TB = 1 game); cache na zápas, ověření á 3 min, max 4 souběžně.
+const FTS=new Map(),FTSbusy=new Set();
+function firstFromPBP(d){const pb=d&&d.pointByPoint;if(!pb||!pb.length)return null;const sets=[...pb].sort((a,b)=>a.set-b.set);const cs=sets[sets.length-1];
+ const g=[...(cs.games||[])].sort((a,b)=>b.game-a.game)[0];const srv=g&&g.score&&g.score.serving;if(srv!==1&&srv!==2)return null;
+ let played=g.game-1;for(const s of sets.slice(0,-1))played+=(s.games||[]).length;return played%2===0?srv:3-srv}
+function verifySrv(list){const now=Date.now();let n=0;for(const m of list){if(m.status!=="live"||!m.sid||FTSbusy.has(m.sid))continue;const e=FTS.get(m.sid);if(e&&now-e.t<180000)continue;if(FTSbusy.size>=4||n++>=4)break;
+ FTSbusy.add(m.sid);j(`${SS}/event/${m.sid}/point-by-point`,7000).then(d=>{const f=firstFromPBP(d);if(f)FTS.set(m.sid,{f,t:Date.now()});else if(!e)FTS.set(m.sid,{f:null,t:Date.now()-120000})}).catch(()=>{}).finally(()=>FTSbusy.delete(m.sid))}}
+const lastN=s=>(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z ]/g," ").trim().split(/\s+/).pop();
+// u zápasu ze Sofascore nastav ověřeného prvního podávajícího; jinak převezmi z theScore (current_server_id) se správnou orientací; jinak neznámý
+function fixSrv(m,ts){if(m.src!=="Sofascore"||!m.ev)return m;const e=FTS.get(m.sid);let f=e&&e.f,how=f?"pbp":null;
+ if(!f&&ts&&ts.ev&&ts.ev.firstToServe){const same=lastN(ts.home)===lastN(m.home);f=same?ts.ev.firstToServe:3-ts.ev.firstToServe;how="theScore"}
+ return {...m,ev:{...m.ev,firstToServe:f||null,srvFrom:how}}}
 // paralelní multi-zdroj: všechny zdroje souběžně (Sofascore á 5 s, zálohy á 15 s; když primár nejede, i zálohy á 5 s).
 // Seznam = nejvýše postavený čerstvý zdroj; zápasy vypadlého vyššího zdroje se nahradí zálohou, jinak drží poslední stav (max 90 s).
 const LSRC=[["sofascore","Sofascore",sofaLive,5000],["thescore","theScore (záloha)",()=>scoreLive(),15000],["365scores","365scores (záloha)",()=>s365Live(),15000]];
@@ -65,7 +78,7 @@ for(const [n,l] of LSRC)ST[n]={name:n,label:l.replace(" (záloha)",""),...blank(
 const mkey=m=>{const f=s=>(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z ]/g," ").trim().split(/\s+/).pop();return [f(m.home),f(m.away)].sort().join("|")};
 function fetchSrc(name,fn){const s=ST[name];if(s.busy)return s.busy;const t0=Date.now();s.at=t0;
  return s.busy=(async()=>{if(FAIL.has(name))throw new Error("simulovaný výpadek");const r=await fn();const list=r.list||r;if(!list.length)throw new Error("prázdná odpověď");return {list,ph:r.phantoms||0}})()
-  .then(({list,ph})=>{Object.assign(s,{state:"ok",lastOk:Date.now(),lat:Date.now()-t0,n:list.length,err:"",list:list.map(m=>({...m,src:s.label})),phantoms:ph})},
+  .then(({list,ph})=>{Object.assign(s,{state:"ok",lastOk:Date.now(),lat:Date.now()-t0,n:list.length,err:"",list:list.map(m=>({...m,src:s.label})),phantoms:ph});if(name==="sofascore")verifySrv(s.list)},
    e=>{const em=/prázdná/.test(e.message);Object.assign(s,{state:em?"empty":"down",lat:Date.now()-t0,err:em?"":e.message,n:0});if(em){s.list=[];s.lastOk=Date.now()}})
   .finally(()=>{s.busy=null})}
 function status(){const now=Date.now();const p=ST[LSRC[0][0]];return LSRC.map(([n])=>{const s=ST[n];
@@ -74,18 +87,20 @@ function status(){const now=Date.now();const p=ST[LSRC[0][0]];return LSRC.map(([
 function merged(){const now=Date.now();const order=LSRC.map(x=>ST[x[0]]);const fresh=s=>s.state==="ok"&&now-s.lastOk<20000;const prim=order.find(fresh);
  const errs=order.filter(s=>s.state==="down").map(s=>LSRC[order.indexOf(s)][1]+": "+s.err);const lab=s=>LSRC[order.indexOf(s)][1];
  if(!prim){const stale=order.find(s=>s.list.length&&now-s.lastOk<90000);
-  return {list:stale?stale.list.map(m=>({...m,stale:true})):[],phantoms:0,source:stale?lab(stale):order.some(s=>s.state==="empty")?LSRC[0][1]:"nedostupné",errs,status:status()}}
+  return {list:stale?stale.list.map(m=>fixSrv({...m,stale:true})):[],phantoms:0,source:stale?lab(stale):order.some(s=>s.state==="empty")?LSRC[0][1]:"nedostupné",errs,status:status()}}
  const seen=new Set(),list=[];const add=m=>{const k=mkey(m);if(!seen.has(k)){seen.add(k);list.push(m)}};
  prim.list.forEach(add);const pi=order.indexOf(prim);if(pi>0)order.slice(pi+1).filter(fresh).forEach(s=>s.list.forEach(add));const back=order.slice(pi+1).filter(fresh).flatMap(x=>x.list);
  for(const s of order.slice(0,pi))if(s.state==="down"&&now-s.lastOk<90000)s.list.forEach(m=>{const b=back.find(x=>mkey(x)===mkey(m));add(b||{...m,stale:true})});
- return {list,phantoms:prim.phantoms,source:lab(prim),lat:prim.lat,errs,status:status()}}
+ const tsl=ST.thescore.state==="ok"?ST.thescore.list:[];const out=list.map(m=>fixSrv(m,m.src==="Sofascore"&&tsl.find(x=>mkey(x)===mkey(m))));
+ return {list:out,phantoms:prim.phantoms,source:lab(prim),lat:prim.lat,errs,status:status()}}
 // getLive({throttle,onUpdate}): throttle = respektuj intervaly; onUpdate po každém zdroji (první odpověď se vykreslí hned)
 function getLive(o={}){const now=Date.now();const pOk=ST[LSRC[0][0]].state!=="down";const ps=[];
  for(const [n,,fn,iv] of LSRC){const s=ST[n];const ivx=Math.min(60000,(n===LSRC[0][0]||!pOk?Math.min(iv,5000):iv)*(o.mult||1));if(o.throttle&&(s.busy||now-s.at<ivx-150))continue;
   ps.push(fetchSrc(n,fn).then(()=>{if(o.onUpdate)o.onUpdate(merged())}))}
  return Promise.all(ps).then(()=>({...merged(),fetched:ps.length}))}
 const resetLive=()=>{for(const s of Object.values(ST))Object.assign(s,blank())};
-const getDay=date=>chain([["sofascore","Sofascore",()=>sofaDay(date)],["thescore","theScore (záloha)",()=>scoreLive(date)],["365scores","365scores (záloha)",()=>s365Live(date)]]);
+const getDay0=date=>chain([["sofascore","Sofascore",()=>sofaDay(date)],["thescore","theScore (záloha)",()=>scoreLive(date)],["365scores","365scores (záloha)",()=>s365Live(date)]]);
+const getDay=date=>getDay0(date).then(r=>{verifySrv(r.list);return {...r,list:r.list.map(m=>fixSrv(m))}});
 const oddsCache=new Map();
 async function odds(sid){if(oddsCache.has(sid))return oddsCache.get(sid);let r=null;try{const d=await j(`${SS}/event/${sid}/odds/1/featured`,6000);const ch=d.featured&&d.featured.default&&d.featured.default.choices;
  if(ch&&ch.length>=2)r=[TM.fracToDec(ch[0].fractionalValue),TM.fracToDec(ch[1].fractionalValue)]}catch(e){}oddsCache.set(sid,r);return r}
@@ -100,4 +115,4 @@ function parsePBP(d){const out=[];for(const s of (d.pointByPoint||[]).slice().so
  out.push({set:s.set,game:g.game,h:g.score.homeScore,a:g.score.awayScore,serving:g.score.serving,scoring:g.score.scoring,points:(g.points||[]).map(p=>[p.homePoint,p.awayPoint])});return out}
 async function pbp(sid){try{return parsePBP(await j(`${SS}/event/${sid}/point-by-point`,7000))}catch(e){return null}}
 const photo=id=>id?`${SS}/team/${id}/image`:"";
-root.LIVE={status,resetLive,merged,ST,fromScore,scoreLive,pbp,parsePBP,parseStats,photo,STATK,getLive,getDay,FAIL,sofaDay,odds,stats,fromSofa}})(globalThis);
+root.LIVE={firstFromPBP,fixSrv,FTS,verifySrv,status,resetLive,merged,ST,fromScore,scoreLive,pbp,parsePBP,parseStats,photo,STATK,getLive,getDay,FAIL,sofaDay,odds,stats,fromSofa}})(globalThis);

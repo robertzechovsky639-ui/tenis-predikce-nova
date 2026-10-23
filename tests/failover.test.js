@@ -49,3 +49,20 @@ test("multi: zápas jen u vypadlého zdroje se drží jako poslední stav",async
 test("multi: throttle – zálohy se neptají častěji než 15 s, když primár jede",async()=>{down=new Set();L.resetLive();let calls=[];const f0=globalThis.fetch;
  globalThis.fetch=async u=>{calls.push(u);return f0(u)};await L.getLive({throttle:true});const n1=calls.length;calls=[];await L.getLive({throttle:true});
  globalThis.fetch=f0;assert.ok(n1>0);assert.equal(calls.length,0);let ups=0;L.resetLive();await L.getLive({onUpdate:()=>ups++});assert.equal(ups,3)});
+// podávající – reálné zachycené payloady (23. 10. 2026, Ningbo: Bejlek – Bouzková, stav 2:5 / 3:5)
+test("podávající: Sofascore firstToServe ignorováno, první podávající z point-by-point",()=>{const pb=require("./fixtures/sofa_pbp_bejlek.json");
+ assert.equal(L.firstFromPBP(pb),2); // game 8 podávala Bejlek (serving 1) po 7 gamech -> začínala Bouzková
+ L.FTS.set(17337143,{f:2,t:Date.now()});const m={src:"Sofascore",sid:17337143,status:"live",home:"Sara Bejlek",away:"Marie Bouzkova",ev:{firstToServe:1,homeScore:{period1:3,point:"0"},awayScore:{period1:5,point:"0"}}};
+ const s=TM.liveState(L.fixSrv(m).ev);assert.equal(s.serverNow,false); // 9. game podává Bouzková (shoda s theScore i Sofascore UI)
+ L.FTS.clear();assert.equal(L.fixSrv(m).ev.firstToServe,null)}); // neověřeno -> neznámý, ne špatný
+test("podávající: theScore current_server_id je id hráče (player1.id)",()=>{const x=require("./fixtures/thescore_bejlek.json")[0];
+ const m=L.fromScore(x,{name:"Ningbo Open",ground_type:"hardcourt",tournament_type:"WTA 500"},"wta");assert.ok(m.ev&&m.ev.firstToServe);
+ const s=TM.liveState(m.ev);assert.equal(s.serverNow,false); // Bouzková
+ const sofa={src:"Sofascore",sid:1,status:"live",home:"Marie Bouzkova",away:"Sara Bejlek",ev:{firstToServe:2,homeScore:{period1:5},awayScore:{period1:3}}}; // opačná orientace
+ const f=L.fixSrv(sofa,m);assert.equal(f.ev.srvFrom,"theScore");assert.equal(TM.liveState(f.ev).serverNow,true)});
+test("podávající: tiebreak rotace a set po TB",()=>{const ls=(h,a,fts)=>TM.liveState({homeScore:h,awayScore:a,firstToServe:fts});
+ // A začal zápas; 12 gamů -> TB podává A první bod, pak B 2 body, A 2...
+ assert.equal(ls({period1:6,point:"0"},{period1:6,point:"0"},1).serverNow,true);assert.equal(ls({period1:6,point:"1"},{period1:6,point:"0"},1).serverNow,false);
+ assert.equal(ls({period1:6,point:"2"},{period1:6,point:"1"},1).serverNow,true);
+ // po TB (13 gamů) začíná 2. set ten, kdo v TB přijímal první bod (B)
+ assert.equal(ls({period1:7,period2:0},{period1:6,period2:0},1).serverNow,false)});
