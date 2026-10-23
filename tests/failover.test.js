@@ -15,9 +15,9 @@ globalThis.fetch=async u=>{const src=u.includes("sofascore")?"sofascore":u.inclu
  if(down.has(src))return {ok:false,status:503,json:async()=>({})};
  const body=src==="sofascore"?(u.includes("/events/live")?sofa:{events:[]}):src==="espn"?(u.includes("/atp/")?espn:{events:[]}):src==="thescore"?(u.includes("/matches")?(u.includes("/atp/")?tsM:[]):u.includes("/atp/")?tsEvs:[]):s365;return {ok:true,json:async()=>body}};
 for(const [fail,exp] of [[[],"Sofascore"],[["sofascore"],"theScore (záloha)"],[["sofascore","thescore"],"365scores (záloha)"]]){
- test(`live: výpadek [${fail}] -> ${exp}`,async()=>{down=new Set(fail);const r=await L.getLive();assert.equal(r.source,exp);assert.ok(r.list.length>=1);assert.equal(r.list[0].home,"Jannik Sinner");assert.equal(r.errs.length,fail.length)})}
-test("live: všechny zdroje mimo provoz -> prázdný seznam, bez výjimky",async()=>{down=new Set(["sofascore","espn","thescore","365scores"]);const r=await L.getLive();assert.equal(r.source,"nedostupné");assert.equal(r.list.length,0);assert.equal(r.errs.length,3)});
-test("live: simulovaný výpadek přes LIVE.FAIL (?fail=)",async()=>{down=new Set();L.FAIL.add("sofascore");const r=await L.getLive();L.FAIL.clear();assert.equal(r.source,"theScore (záloha)")});
+ test(`live: výpadek [${fail}] -> ${exp}`,async()=>{down=new Set(fail);L.resetLive();const r=await L.getLive();assert.equal(r.source,exp);assert.ok(r.list.length>=1);assert.equal(r.list[0].home,"Jannik Sinner");assert.equal(r.errs.length,fail.length)})}
+test("live: všechny zdroje mimo provoz -> prázdný seznam, bez výjimky",async()=>{down=new Set(["sofascore","espn","thescore","365scores"]);L.resetLive();const r=await L.getLive();assert.equal(r.source,"nedostupné",JSON.stringify(r.status));assert.equal(r.list.length,0);assert.equal(r.errs.length,3)});
+test("live: simulovaný výpadek přes LIVE.FAIL (?fail=)",async()=>{down=new Set();L.FAIL.add("sofascore");L.resetLive();const r=await L.getLive();L.FAIL.clear();assert.equal(r.source,"theScore (záloha)")});
 test("den: Sofascore dole -> ESPN",async()=>{down=new Set(["sofascore"]);const r=await L.getDay("2026-10-23");assert.equal(r.source,"theScore (záloha)")});
 test("Sofascore parsing: přerušeno, skreč, stale, GS ženy",()=>{require("../web/model.js");require("../web/live.js");const L=globalThis.LIVE;
  const base=(st,ds,extra={})=>({id:1,tournament:{name:"US Open, New York, USA",category:{id:6,name:"WTA",slug:"wta"},uniqueTournament:{name:"US Open"}},homeTeam:{name:"A B",type:1},awayTeam:{name:"C D",type:1},status:{type:st,description:ds},homeScore:{period1:6,point:"A"},awayScore:{period1:4,point:"40"},startTimestamp:0,groundType:"Hardcourt outdoor",...extra});
@@ -38,3 +38,14 @@ test("theScore: parser – sety, body (AD→A), podávající → liveState, TB"
  const tb2={...tb,current_server_id:22};assert.equal(TM.liveState(L.fromScore(tb2,tsEvs[0],"atp").ev).serverNow,false);
  const f=L.fromScore(tsM[1],tsEvs[0],"atp");assert.equal(f.status,"finished");assert.equal(f.winner,1);assert.equal(L.fromScore({...tsM[0],is_double:true},tsEvs[0],"atp"),null)});
 test("theScore: scoreLive vrací jen živé dvouhry",async()=>{down=new Set();const r=await L.scoreLive();assert.equal(r.length,1);assert.equal(r[0].src,"theScore")});
+test("multi: všechny zdroje paralelně, stav + zdroj u zápasu",async()=>{down=new Set();L.resetLive();L.resetLive();const r=await L.getLive();
+ assert.equal(r.source,"Sofascore");assert.deepEqual(r.status.map(s=>s.color),["green","green","green"]);assert.equal(r.list[0].src,"Sofascore");assert.ok(r.status.every(s=>s.lat!=null&&s.n>=1))});
+test("multi: výpadek primáru -> zápasy nahrazeny zálohou bez mezery, čipy červená/žlutá",async()=>{down=new Set();L.resetLive();await L.getLive();
+ down=new Set(["sofascore"]);const r=await L.getLive();assert.equal(r.list.length,1);assert.equal(r.list[0].src,"theScore");assert.equal(r.source,"theScore (záloha)");
+ assert.deepEqual(r.status.map(s=>s.color),["red","yellow","yellow"]);assert.ok(r.status[0].err)});
+test("multi: zápas jen u vypadlého zdroje se drží jako poslední stav",async()=>{down=new Set();L.resetLive();await L.getLive();
+ L.ST.sofascore.list.push({id:"s9",home:"Ana Zed",away:"Bea Yo",status:"live",src:"Sofascore"});down=new Set(["sofascore"]);const r=await L.getLive();
+ const x=r.list.find(m=>m.home==="Ana Zed");assert.ok(x&&x.stale,JSON.stringify([r.source,r.list.map(m=>m.home),r.status.map(s=>s.state)]))});
+test("multi: throttle – zálohy se neptají častěji než 15 s, když primár jede",async()=>{down=new Set();L.resetLive();let calls=[];const f0=globalThis.fetch;
+ globalThis.fetch=async u=>{calls.push(u);return f0(u)};await L.getLive({throttle:true});const n1=calls.length;calls=[];await L.getLive({throttle:true});
+ globalThis.fetch=f0;assert.ok(n1>0);assert.equal(calls.length,0);let ups=0;L.resetLive();await L.getLive({onUpdate:()=>ups++});assert.equal(ups,3)});

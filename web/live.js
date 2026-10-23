@@ -57,7 +57,34 @@ function race(srcs,head=3000){return new Promise(res=>{const errs=[],st=srcs.map
  const run=i=>{const [name,label,fn]=srcs[i];st[i]="run";(async()=>{if(FAIL.has(name))throw new Error("simulovaný výpadek");const r=await fn();const list=r.list||r;if(!list.length)throw new Error("prázdná odpověď");return {list,phantoms:r.phantoms||0,source:label}})()
   .then(r=>{st[i]="ok";rs[i]=r;check()},e=>{st[i]="fail";errs.push(label+": "+e.message);if(i===0)start();check()})};
  const start=()=>{while(started<srcs.length)run(started++)};run(started++);setTimeout(()=>{slow=true;start();check()},head)})}
-const getLive=()=>race([["sofascore","Sofascore",sofaLive],["thescore","theScore (záloha)",()=>scoreLive()],["365scores","365scores (záloha)",()=>s365Live()]]);
+// paralelní multi-zdroj: všechny zdroje souběžně (Sofascore á 5 s, zálohy á 15 s; když primár nejede, i zálohy á 5 s).
+// Seznam = nejvýše postavený čerstvý zdroj; zápasy vypadlého vyššího zdroje se nahradí zálohou, jinak drží poslední stav (max 90 s).
+const LSRC=[["sofascore","Sofascore",sofaLive,5000],["thescore","theScore (záloha)",()=>scoreLive(),15000],["365scores","365scores (záloha)",()=>s365Live(),15000]];
+const ST={};const blank=()=>({state:"idle",lastOk:0,lat:null,n:0,err:"",list:[],phantoms:0,at:0,busy:null});
+for(const [n,l] of LSRC)ST[n]={name:n,label:l.replace(" (záloha)",""),...blank()};
+const mkey=m=>{const f=s=>(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z ]/g," ").trim().split(/\s+/).pop();return [f(m.home),f(m.away)].sort().join("|")};
+function fetchSrc(name,fn){const s=ST[name];if(s.busy)return s.busy;const t0=Date.now();s.at=t0;
+ return s.busy=(async()=>{if(FAIL.has(name))throw new Error("simulovaný výpadek");const r=await fn();const list=r.list||r;if(!list.length)throw new Error("prázdná odpověď");return {list,ph:r.phantoms||0}})()
+  .then(({list,ph})=>{Object.assign(s,{state:"ok",lastOk:Date.now(),lat:Date.now()-t0,n:list.length,err:"",list:list.map(m=>({...m,src:s.label})),phantoms:ph})},
+   e=>{const em=/prázdná/.test(e.message);Object.assign(s,{state:em?"empty":"down",lat:Date.now()-t0,err:em?"":e.message,n:0});if(em){s.list=[];s.lastOk=Date.now()}})
+  .finally(()=>{s.busy=null})}
+function status(){const now=Date.now();const p=ST[LSRC[0][0]];return LSRC.map(([n])=>{const s=ST[n];
+ const c=s.state==="down"?"red":s.state==="idle"?"grey":s.lat>3000||(n!==LSRC[0][0]&&p.state==="down")?"yellow":"green";
+ return {name:n,label:s.label,state:s.state,lastOk:s.lastOk,lat:s.lat,n:s.n,err:s.err,busy:!!s.busy,color:c,age:s.lastOk?now-s.lastOk:null}})}
+function merged(){const now=Date.now();const order=LSRC.map(x=>ST[x[0]]);const fresh=s=>s.state==="ok"&&now-s.lastOk<20000;const prim=order.find(fresh);
+ const errs=order.filter(s=>s.state==="down").map(s=>LSRC[order.indexOf(s)][1]+": "+s.err);const lab=s=>LSRC[order.indexOf(s)][1];
+ if(!prim){const stale=order.find(s=>s.list.length&&now-s.lastOk<90000);
+  return {list:stale?stale.list.map(m=>({...m,stale:true})):[],phantoms:0,source:stale?lab(stale):order.some(s=>s.state==="empty")?LSRC[0][1]:"nedostupné",errs,status:status()}}
+ const seen=new Set(),list=[];const add=m=>{const k=mkey(m);if(!seen.has(k)){seen.add(k);list.push(m)}};
+ prim.list.forEach(add);const pi=order.indexOf(prim);if(pi>0)order.slice(pi+1).filter(fresh).forEach(s=>s.list.forEach(add));const back=order.slice(pi+1).filter(fresh).flatMap(x=>x.list);
+ for(const s of order.slice(0,pi))if(s.state==="down"&&now-s.lastOk<90000)s.list.forEach(m=>{const b=back.find(x=>mkey(x)===mkey(m));add(b||{...m,stale:true})});
+ return {list,phantoms:prim.phantoms,source:lab(prim),lat:prim.lat,errs,status:status()}}
+// getLive({throttle,onUpdate}): throttle = respektuj intervaly; onUpdate po každém zdroji (první odpověď se vykreslí hned)
+function getLive(o={}){const now=Date.now();const pOk=ST[LSRC[0][0]].state!=="down";const ps=[];
+ for(const [n,,fn,iv] of LSRC){const s=ST[n];const ivx=n===LSRC[0][0]||!pOk?Math.min(iv,5000):iv;if(o.throttle&&(s.busy||now-s.at<ivx-300))continue;
+  ps.push(fetchSrc(n,fn).then(()=>{if(o.onUpdate)o.onUpdate(merged())}))}
+ return Promise.all(ps).then(merged)}
+const resetLive=()=>{for(const s of Object.values(ST))Object.assign(s,blank())};
 const getDay=date=>chain([["sofascore","Sofascore",()=>sofaDay(date)],["thescore","theScore (záloha)",()=>scoreLive(date)],["365scores","365scores (záloha)",()=>s365Live(date)]]);
 const oddsCache=new Map();
 async function odds(sid){if(oddsCache.has(sid))return oddsCache.get(sid);let r=null;try{const d=await j(`${SS}/event/${sid}/odds/1/featured`,6000);const ch=d.featured&&d.featured.default&&d.featured.default.choices;
@@ -73,4 +100,4 @@ function parsePBP(d){const out=[];for(const s of (d.pointByPoint||[]).slice().so
  out.push({set:s.set,game:g.game,h:g.score.homeScore,a:g.score.awayScore,serving:g.score.serving,scoring:g.score.scoring,points:(g.points||[]).map(p=>[p.homePoint,p.awayPoint])});return out}
 async function pbp(sid){try{return parsePBP(await j(`${SS}/event/${sid}/point-by-point`,7000))}catch(e){return null}}
 const photo=id=>id?`${SS}/team/${id}/image`:"";
-root.LIVE={fromScore,scoreLive,pbp,parsePBP,parseStats,photo,STATK,getLive,getDay,FAIL,sofaDay,odds,stats,fromSofa}})(globalThis);
+root.LIVE={status,resetLive,merged,ST,fromScore,scoreLive,pbp,parsePBP,parseStats,photo,STATK,getLive,getDay,FAIL,sofaDay,odds,stats,fromSofa}})(globalThis);

@@ -19,7 +19,7 @@ function inplay(m,pre,st){const key=m.id;let sp=servC.get(key);if(!sp){const pr=
 function prob(m){if(!DB[m.tour])return {nodb:true,p:NaN,live:NaN,known:false,a:null,b:null};const pre=preProb(m);pre.raw=pre.p;const q=mkt(m);if(S.blend&&q!=null){pre.p=blendP(pre.p,q);pre.bl=true}let p=pre.p,ip=null;if(m.status==="live"&&m.ev&&m.sets.length){ip=inplay(m,pre);p=ip.match}return {...pre,live:p,ip}}
 // --- historie predikcí ---
 const BW=0.7;// váha trhu v blendu (backtest 13.–22.10.2026, n=775: nejlepší z 0.3/0.5/0.7)
-function mkt(m){return m.odds?TM.devig(m.odds[0],m.odds[1])[0]:null}
+function mkt(m){const d=m.odds&&TM.devig(m.odds[0],m.odds[1]);return d?d[0]:null}
 function blendP(p,q){if(q==null)return p;const L=x=>Math.log(x/(1-x)),c=x=>Math.min(.999,Math.max(.001,x));return 1/(1+Math.exp(-((1-BW)*L(c(p))+BW*L(c(q)))))}
 let HC=null;function logPred(m,pr){if(!m.sid||pr.p==null||!isFinite(pr.p))return;const h=HC||(HC=LS.get("tpn-hist",{}));let x=h[m.id],ch=false;
  if(!x){if(m.status==="finished")return;x=h[m.id]={h:m.home,a:m.away,p:+pr.p.toFixed(4),t:m.start,cat:m.cat,tr:m.tourney,k:pr.known?1:pr.prior?2:0,d:TODAY};ch=true}
@@ -39,13 +39,22 @@ async function loadData(){const [a,w]=await Promise.all(["atp","wta"].map(t=>get
 function dstr(off){const d=new Date(Date.now()+off*864e5);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 let loading=false;
 let FAILS=0;const T0=performance.now();
-async function refresh(){if(loading)return;loading=true;const t0=performance.now();try{
- if(S.day==="live"){const r=await LIVE.getLive();S.list=TM.dedupe(r.list);S.src=r.source;S.phantoms=r.phantoms;S.errs=r.errs;S.snap=null;if(r.list.length)try{localStorage.setItem("tpn-live",JSON.stringify({t:Date.now(),src:r.source,list:r.list.map(m=>({...m,odds:undefined,stats:undefined,pbp:undefined}))}))}catch(e){}
-  FAILS=r.source==="nedostupné"?FAILS+1:0}
- else{const r=await LIVE.getDay(dstr(S.day==="today"?0:1));S.list=TM.dedupe(r.list).sort((a,b)=>a.start-b.start);S.src=r.source;S.errs=r.errs;S.phantoms=r.phantoms||0}
- S.loaded=true;S.lat=Math.round(performance.now()-t0);if(!S.ttfl)S.ttfl=Math.round(performance.now()-T0);S.list.forEach(m=>{if(OD.has(m.id))m.odds=OD.get(m.id);if(STC.has(m.id))m.stats=STC.get(m.id);if(PBC.has(m.id))m.pbp=PBC.get(m.id)});trackLive();notifyCheck();
- resolveHist(S.list);$("#upd").innerHTML=`<span class="g"></span>${esc(S.src)} · aktualizováno ${new Date().toLocaleTimeString("cs-CZ")} <small>(${S.lat} ms)</small>${S.phantoms?` · odfiltrováno ${S.phantoms} fantomů`:""}`;
- if(S.view==="zapasy"||S.view==="oblibene"||S.view==="tipy")render(true);loadOdds();const o=S.list.find(m=>m.id===S.open);if(o&&o.status==="live")loadDetail(o)}catch(e){FAILS++;S.errs=["chyba: "+e.message];S.loaded=true;render(true)}finally{loading=false}}
+function applyLive(r,t0){if(S.day!=="live")return;S.list=TM.dedupe(r.list);S.src=r.source;S.phantoms=r.phantoms;S.errs=r.errs;S.status=r.status;S.snap=null;
+ if(r.list.length)try{localStorage.setItem("tpn-live",JSON.stringify({t:Date.now(),src:r.source,list:r.list.map(m=>({...m,odds:undefined,stats:undefined,pbp:undefined}))}))}catch(e){}
+ FAILS=r.source==="nedostupné"?FAILS+1:0;after(t0,r.lat)}
+function after(t0,lat){S.loaded=true;S.lat=lat??Math.round(performance.now()-t0);if(!S.ttfl&&S.list.length)S.ttfl=Math.round(performance.now()-T0);if(DB.atp)S.predAt=Date.now();
+ S.list.forEach(m=>{if(OD.has(m.id))m.odds=OD.get(m.id);if(STC.has(m.id))m.stats=STC.get(m.id);if(PBC.has(m.id))m.pbp=PBC.get(m.id)});
+ try{if(DB.atp){trackLive();notifyCheck();resolveHist(S.list)}}catch(e){}updLine();
+ if(S.view==="zapasy"||S.view==="oblibene"||S.view==="tipy")render(true);if(DB.atp)loadOdds();const o=S.list.find(m=>m.id===S.open);if(o&&o.status==="live")loadDetail(o)}
+const CHC={green:"var(--grn)",yellow:"#f5c542",red:"#ff5d6c",grey:"#7d7896"};
+function updLine(){const el=$("#upd");if(!el)return;const nl=S.list.filter(m=>m.status==="live").length;const pm=S.predAt?Math.floor((Date.now()-S.predAt)/60000):null;
+ const st=S.status||[];el.innerHTML=`<span class="g"></span>${S.day==="live"?`<b>${nl} živě</b> · `:""}${pm==null?"predikce se načítají…":`predikce aktualizovány ${pm<1?"před <1 min":"před "+pm+" min"}`} <small>(${esc(S.src||"")} · ${S.lat??"–"} ms)</small>${S.phantoms?` · odfiltrováno ${S.phantoms} fantomů`:""}
+ ${st.length&&S.day==="live"?`<div class="chips">${st.map(s=>`<span class="chip c-${s.color}" title="${esc(s.label)}: ${s.state}${s.err?" – "+esc(s.err):""}">${esc(s.label)}</span>`).join("")}<button class="chip c-det" data-srcdet="1" aria-expanded="${!!S.srcDet}">detail</button></div>`:""}
+ ${S.srcDet&&st.length?`<div class="srcdet">${st.map(s=>`<div><span class="chip c-${s.color}">${esc(s.label)}</span> ${s.lastOk?"OK před "+Math.round(s.age/1000)+" s":"zatím bez dat"} · ${s.lat??"–"} ms · ${s.n} zápasů${s.err?` · <span style="color:#ff5d6c">${esc(s.err)}</span>`:""}${s.busy?" · načítá…":""}</div>`).join("")}</div>`:""}`}
+async function refresh(){const t0=performance.now();
+ if(S.day==="live"){try{const r=await LIVE.getLive({throttle:true,onUpdate:r=>applyLive(r,t0)});applyLive(r,t0)}catch(e){FAILS++;S.errs=["chyba: "+e.message];S.loaded=true;render(true)}return}
+ if(loading)return;loading=true;try{const r=await LIVE.getDay(dstr(S.day==="today"?0:1));if(S.day==="live")return;S.list=TM.dedupe(r.list).sort((a,b)=>a.start-b.start);S.src=r.source;S.errs=r.errs;S.phantoms=r.phantoms||0;S.status=null;after(t0)}
+ catch(e){FAILS++;S.errs=["chyba: "+e.message];S.loaded=true;render(true)}finally{loading=false}}
 const OD=new Map();
 const STC=new Map(),PBC=new Map(),PH=new Map(),PREV=new Map();
 // průběh pravděpodobnosti během sledování (každé obnovení)
@@ -96,7 +105,7 @@ function matchRow(m){const pr=prob(m),p=pr.live;if(pr.a&&pr.b&&!pr.nodb)logPred(
  const sc=i=>m.sets.map((s,k)=>`<span class="${m.status==="live"&&k===m.sets.length-1?"cur":""}">${s[i]}</span>`).join("")+(m.status==="live"&&m.point&&m.point[i]!=null?`<span class="pt">${esc(m.point[i])}</span>`:"");
  const t=m.status==="live"?`<span class="badge live">● ${esc(m.desc||"živě")}</span>${m.stale?`<span class="badge">⚠ skóre se nemění 15+ min</span>`:""}`:m.status==="finished"?`<span class="badge">${m.retired?esc(m.desc):"Konec"}</span>`:`<span class="badge">${new Date(m.start*1000).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}</span>`;
  const o=m.odds;const ok=pr.known&&pr.a.m>=20&&pr.b.m>=20;const vt=o&&ok&&!pr.nodb?TM.valueTip(p,o):null;const v=[vt&&vt.side===0,vt&&vt.side===1];
- const open=S.open===m.id;return `<div class="m${open?" open":""}" data-id="${m.id}" role="button" tabindex="0" aria-expanded="${open}" aria-label="${esc(m.home)} proti ${esc(m.away)}, ${m.status==="live"?"živě":m.status==="finished"?"skončeno":"nezačalo"}, výhra ${esc(m.home)} ${pc(p)} procent"><div class="row" style="margin-bottom:4px">${t}${m.status==="live"?spark(PH.get(m.id)):""}<small class="nm">${esc(SN[m.surface])}${pr.nodb||pr.known?"":pr.prior?" · odhad z žebříčku":" · málo dat o hráčích"}</small></div>
+ const open=S.open===m.id;return `<div class="m${open?" open":""}" data-id="${m.id}" role="button" tabindex="0" aria-expanded="${open}" aria-label="${esc(m.home)} proti ${esc(m.away)}, ${m.status==="live"?"živě":m.status==="finished"?"skončeno":"nezačalo"}, výhra ${esc(m.home)} ${pc(p)} procent"><div class="row" style="margin-bottom:4px">${t}${m.status==="live"?spark(PH.get(m.id)):""}<small class="nm">${esc(m.tourney||"")} · ${esc(SN[m.surface])} · <span class="srcl">zdroj ${esc(m.src||"—")}${m.stale?" (poslední stav)":""}</span>${pr.nodb||pr.known?"":pr.prior?" · odhad z žebříčku":" · málo dat o hráčích"}</small></div>
  ${[0,1].map(i=>{const n=i?m.away:m.home;return `<div class="row"><span class="srv ${st&&st.known&&(st.serverNow===!i)?"on":""}"></span><span class="nm ${m.winner===i+1?"w":""}">${m.cc&&m.cc[i]?`<span class="fl" aria-hidden="true">${flag(m.cc[i])}</span>`:""}${esc(n)}</span><button class="star ${isFav(n)?"on":""}" data-fav="${esc(n)}" aria-label="${isFav(n)?"Odebrat z":"Přidat do"} oblíbených: ${esc(n)}" aria-pressed="${isFav(n)}">★</button><div class="sc">${sc(i)}</div></div>`}).join("")}
  ${pr.nodb?`<div class="gm"><small>Model se načítá…</small></div>`:`${gameLine(m,gameInfo(m,pr,st))}<div style="margin-top:6px">${mini(m.status==="live"?"Výhra (živě)":"Výhra",p)}</div>`}
  ${o?`<div class="odds">Kurzy <span class="ob ${v[0]?"val":""}">${o[0]}</span><span class="ob ${v[1]?"val":""}">${o[1]}</span>${v[0]||v[1]?`<span class="badge val">VALUE: ${esc(v[0]?m.home:m.away)}</span>`:""}</div>`:""}
@@ -242,8 +251,8 @@ function render(soft){const html=!DB.atp&&S.view!=="zapasy"?`<h1>…</h1>${skele
  if(soft===true&&S.view!=="chat"&&S.view!=="hledat")patch(html);else V().innerHTML=html;if(act&&soft===true){const e=document.getElementById(act);if(e)e.focus()}
  document.querySelectorAll("nav.bottom button").forEach(b=>{b.classList.toggle("on",b.dataset.v===S.view);b.setAttribute("aria-current",b.dataset.v===S.view?"page":"false")});document.querySelectorAll("nav.bottom button").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));
  if(S.view==="chat"){const go=()=>{const q=$("#q").value.trim();if(!q)return;S.chat.push(["u",q],["b",answer(q)]);render();$("#q").focus()};$("#send").onclick=go;$("#q").onkeydown=e=>{if(e.key==="Enter")go()};const l=$("#chatlog");l.scrollTop=l.scrollHeight}}
-document.addEventListener("click",async e=>{const t=e.target.closest("[data-v],[data-day],[data-cat],[data-fav],[data-prof],[data-retry],[data-notif],[data-search],.m");if(!t)return;
- if(t.dataset.retry){S.loaded=false;render();refresh();return}if(t.dataset.notif){toggleNotif();return}
+document.addEventListener("click",async e=>{const t=e.target.closest("[data-v],[data-day],[data-cat],[data-fav],[data-prof],[data-retry],[data-srcdet],[data-notif],[data-search],.m");if(!t)return;
+ if(t.dataset.srcdet){S.srcDet=!S.srcDet;updLine();return}if(t.dataset.retry){S.loaded=false;render();refresh();return}if(t.dataset.notif){toggleNotif();return}
  if(t.dataset.search){S.view="hledat";render();const q=$("#gq");if(q)q.focus();return}
  if(t.dataset.v){S.view=t.dataset.v;render();scrollTo(0,0);if(S.view==="zapasy"||S.view==="oblibene")refresh();return}
  if(t.dataset.day){S.day=t.dataset.day;S.list=[];S.open=null;render();refresh();return}
@@ -262,12 +271,13 @@ document.addEventListener("input",e=>{const id=e.target.id;
  if(id==="surf"){S.surf=e.target.value;render()}if(id==="bo"||id==="lvl"){S[id]=+e.target.value;render()}if(id==="tour"){S.tour=e.target.value;S.p1=S.p2="";S.player=null;render()}
  if(id==="psearch"&&getP(S.tour,e.target.value)){S.player=e.target.value;render()}});
 // start: živé skóre hned (snapshot z localStorage, pak paralelně živý seznam a data modelu)
-function poll(){const live=S.day==="live"&&/zapasy|oblibene|tipy/.test(S.view);const iv=document.hidden?60000:live?Math.min(60000,5000*2**Math.min(FAILS,4)):30000;
+function poll(){const live=S.day==="live"&&/zapasy|oblibene|tipy/.test(S.view);const iv=document.hidden?60000:live?Math.min(60000,4000*2**Math.min(FAILS,4)):30000;
  setTimeout(async()=>{if(!document.hidden&&(live||S.day!=="live"&&S.view==="zapasy"))await refresh();poll()},iv)}
 (async()=>{const h=location.hash.slice(1);if(VIEWS[h])S.view=h;
  try{const sn=JSON.parse(localStorage.getItem("tpn-live"));if(sn&&Date.now()-sn.t<6*3600e3&&S.day==="live"){S.list=sn.list;S.src=sn.src+" (uloženo "+new Date(sn.t).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})+")";S.loaded=true;S.snap=true}}catch(e){}
- render();const pd=loadData().then(()=>render(true));refresh();
+ render();updLine();refresh();poll();setInterval(updLine,30000);addEventListener("focus",()=>{if(S.day==="live")refresh()});
+ const pd=new Promise(r=>setTimeout(r,S.snap?400:1200)).then(loadData).then(()=>{S.predAt=Date.now();updLine();render(true)});
  try{await pd}catch(e){V().innerHTML=`<div class="empty err" role="alert">Nepodařilo se načíst data modelu (${esc(e.message)}).<br><button class="btn" onclick="location.reload()">Načíst znovu</button></div>`;return}
- poll();document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.day==="live")refresh()});
+ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.day==="live")refresh()});
  if("serviceWorker" in navigator&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{})})();
 addEventListener("hashchange",()=>{const h=location.hash.slice(1);if(VIEWS[h]&&DB.atp){S.view=h;render();if(h==="tipy"&&S.day==="live"){S.day="today";S.loaded=false}if(h==="zapasy"||h==="oblibene"||h==="tipy")refresh()}});
