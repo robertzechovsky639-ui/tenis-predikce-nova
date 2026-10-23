@@ -14,7 +14,7 @@ function fromSofa(e){const slug=e.tournament&&e.tournament.category&&e.tournamen
  const slam=(c[0]==="ATP"||c[0]==="WTA")&&SLAM.test(e.tournament.name+" "+((e.tournament.uniqueTournament||{}).name||""))&&!/qualif|junior|boys|girls|wheelchair/i.test(e.tournament.name);const bo=slam&&c[1]==="atp"?5:3;
  return {id:"s"+e.id,sid:e.id,src:"Sofascore",cat:c[0],tour:c[1],tourney:e.tournament.name,surface:TM.surfaceOf(e.groundType),home:e.homeTeam.name,away:e.awayTeam.name,hid:e.homeTeam.id,aid:e.awayTeam.id,rk:[e.homeTeam.ranking||null,e.awayTeam.ranking||null],cc:[(e.homeTeam.country||{}).alpha2||"",(e.awayTeam.country||{}).alpha2||""],
   status:st,start:e.startTimestamp,sets,point:[e.homeScore.point,e.awayScore.point],winner:e.winnerCode||null,desc:susp?"Přerušeno":ret?(/walkover|w\/o/i.test(ds)?"Skreč před zápasem (W/O)":"Skreč"):e.status.description,suspended:susp,retired:ret,stale,bo,slam,ev:{...e,bo,slam},rank:e.changes&&e.changes.changeTimestamp||0}}
-async function sofaLive(){const d=await j(SS+"/sport/tennis/events/live");const now=Date.now()/1000;let ph=0;
+async function sofaLive(){const d=await j(SS+"/sport/tennis/events/live",6000);const now=Date.now()/1000;let ph=0;
  const out=[];for(const e of d.events||[]){if(TM.isPhantom(e,now)){ph++;continue}const m=fromSofa(e);if(m)out.push(m)}return {list:out,phantoms:ph}}
 async function sofaDay(date){const rs=await Promise.allSettled(SCHED_IDS.map(c=>j(`${SS}/category/${c}/scheduled-events/${date}`)));
  const now=Date.now()/1000;let ph=0;const out=[];rs.forEach(r=>{if(r.status==="fulfilled")(r.value.events||[]).forEach(e=>{if(e.status&&e.status.type==="inprogress"&&TM.isPhantom(e,now)){ph++;return}const m=fromSofa(e);if(m)out.push(m)})});if(!out.length&&rs.every(r=>r.status==="rejected"))throw new Error("sofascore day");return {list:out,phantoms:ph}}
@@ -32,7 +32,14 @@ const FAIL=new Set((typeof location!=="undefined"&&new URLSearchParams(location.
 async function chain(srcs){const errs=[];for(const [name,label,fn] of srcs){try{if(FAIL.has(name))throw new Error("simulovaný výpadek");const r=await fn();const list=r.list||r;
  if(!list.length&&name!==srcs[srcs.length-1][0])throw new Error("prázdná odpověď");return {list,phantoms:r.phantoms||0,source:label,errs}}catch(e){errs.push(label+": "+e.message)}}
  return {list:[],phantoms:0,source:"nedostupné",errs}}
-const getLive=()=>chain([["sofascore","Sofascore",sofaLive],["espn","ESPN (záloha)",()=>espnLive()],["365scores","365scores (záloha)",()=>s365Live()]]);
+// živě: primární Sofascore; když neodpoví do 3 s, paralelně se spustí zálohy a vyhraje první neprázdná odpověď
+function race(srcs,head=3000){return new Promise(res=>{const errs=[],st=srcs.map(()=>null),rs=[];let done=false,slow=false,started=0;
+ const check=()=>{if(done)return;const i=st.findIndex(x=>x!=="fail");if(i<0){done=true;return res({list:[],phantoms:0,source:errs.some(x=>/prázdná/.test(x))?srcs[0][1]:"nedostupné",errs})}
+  let k=st[i]==="ok"?i:slow?st.findIndex(x=>x==="ok"):-1;if(k>=0){done=true;res({...rs[k],errs})}else if(st[i]===null&&i>=started)start()};
+ const run=i=>{const [name,label,fn]=srcs[i];st[i]="run";(async()=>{if(FAIL.has(name))throw new Error("simulovaný výpadek");const r=await fn();const list=r.list||r;if(!list.length)throw new Error("prázdná odpověď");return {list,phantoms:r.phantoms||0,source:label}})()
+  .then(r=>{st[i]="ok";rs[i]=r;check()},e=>{st[i]="fail";errs.push(label+": "+e.message);if(i===0)start();check()})};
+ const start=()=>{while(started<srcs.length)run(started++)};run(started++);setTimeout(()=>{slow=true;start();check()},head)})}
+const getLive=()=>race([["sofascore","Sofascore",sofaLive],["espn","ESPN (záloha)",()=>espnLive()],["365scores","365scores (záloha)",()=>s365Live()]]);
 const getDay=date=>chain([["sofascore","Sofascore",()=>sofaDay(date)],["espn","ESPN (záloha)",()=>espnLive(date)],["365scores","365scores (záloha)",()=>s365Live(date)]]);
 const oddsCache=new Map();
 async function odds(sid){if(oddsCache.has(sid))return oddsCache.get(sid);let r=null;try{const d=await j(`${SS}/event/${sid}/odds/1/featured`,6000);const ch=d.featured&&d.featured.default&&d.featured.default.choices;
