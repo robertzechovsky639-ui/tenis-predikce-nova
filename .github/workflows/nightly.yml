@@ -35,6 +35,7 @@ jobs:
           echo "Praha $H h, režim $MODE, běh $RUN"
       - uses: actions/checkout@v4
         if: steps.m.outputs.run == '1'
+        with: { fetch-depth: 0 }
       - uses: actions/setup-python@v5
         if: steps.m.outputs.run == '1'
         with: { python-version: "3.12" }
@@ -63,7 +64,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git add data/recent.csv data/recent_sources.json web/data
-          git diff --cached --quiet || (git commit -m "Aktualizace dat (${{ steps.m.outputs.mode }}) [skip ci]" && git push)
+          git diff --cached --quiet && exit 0
+          git commit -m "Aktualizace dat (${{ steps.m.outputs.mode }}) [skip ci]"
+          # remote se mohl mezitím posunout (push kódu) -> fetch + rebase (data z tohoto běhu vyhrávají) + push, max 3 pokusy
+          for i in 1 2 3; do
+            git fetch origin main && git rebase -X theirs origin/main && git push origin HEAD:main && exit 0
+            git rebase --abort 2>/dev/null || true; echo "push pokus $i selhal, zkouším znovu"; sleep $((i*5))
+          done
+          exit 1
       - uses: actions/configure-pages@v5
         if: steps.m.outputs.run == '1'
       - uses: actions/upload-pages-artifact@v3
